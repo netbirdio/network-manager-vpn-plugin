@@ -112,6 +112,8 @@ jobs:
           name: nm-netbird-service-linux-snapshot
           path: |
             dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
             dist/checksums.txt
           if-no-files-found: error
           retention-days: 7
@@ -151,7 +153,7 @@ jobs:
             gh release create snapshot --title "Snapshot" --notes "$notes" --prerelease --latest=false
           fi
 
-          gh release upload snapshot dist/*.tar.gz dist/checksums.txt --clobber
+          gh release upload snapshot dist/*.tar.gz dist/*.deb dist/*.rpm dist/checksums.txt --clobber
 
   release:
     name: Publish release artifacts

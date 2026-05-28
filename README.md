@@ -18,7 +18,32 @@ For development you can run the service directly on the session bus and use the 
 
 The preferred distribution model is a distro package. This repository does not ship curl-to-shell installation automation.
 
-Package/manual installs should provide:
+Until a project package repository/PPA exists, GitHub releases provide native packages and a manual tarball.
+Install the NetBird daemon/runtime first if your package manager cannot resolve the local package dependency automatically.
+
+Debian/Ubuntu:
+
+```bash
+sudo apt install ./network-manager-netbird*.deb
+```
+
+Fedora/RHEL-like distributions:
+
+```bash
+sudo dnf install ./network-manager-netbird*.rpm
+```
+
+Manual tarball fallback:
+
+```bash
+tar xf nm-netbird-service_linux_amd64.tar.gz
+cd nm-netbird-service_linux_amd64
+sudo ./install.sh
+```
+
+The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts.
+
+Package/manual installs provide:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
 - NetworkManager VPN metadata for VPN type `netbird`

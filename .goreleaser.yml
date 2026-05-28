@@ -28,6 +28,55 @@ archives:
     formats:
       - tar.gz
     name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    wrap_in_directory: true
+    files:
+      - README.md
+      - src: scripts/install-release.sh
+        dst: install.sh
+      - src: scripts/uninstall-release.sh
+        dst: uninstall.sh
+      - src: packaging/NetworkManager/VPN/nm-netbird-service.name
+        dst: packaging/NetworkManager/VPN/nm-netbird-service.name
+      - src: packaging/dbus-1/system.d/nm-netbird-service.conf
+        dst: packaging/dbus-1/system.d/nm-netbird-service.conf
+      - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
+        dst: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
+
+nfpms:
+  - id: linux-packages
+    ids:
+      - nm-netbird-service
+    package_name: network-manager-netbird
+    vendor: NetBird
+    homepage: https://netbird.io
+    maintainer: NetBird <hello@netbird.io>
+    description: NetworkManager VPN plugin for NetBird.
+    section: net
+    priority: optional
+    bindir: /usr/libexec
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: packaging/NetworkManager/VPN/nm-netbird-service.name
+        dst: /usr/share/NetworkManager/VPN/nm-netbird-service.name
+      - src: packaging/dbus-1/system.d/nm-netbird-service.conf
+        dst: /usr/share/dbus-1/system.d/nm-netbird-service.conf
+      - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
+        dst: /etc/NetworkManager/conf.d/90-netbird-unmanaged.conf
+        type: config|noreplace
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+      postremove: packaging/scripts/postremove.sh
+    overrides:
+      deb:
+        dependencies:
+          - network-manager
+          - netbird
+      rpm:
+        dependencies:
+          - NetworkManager
+          - netbird
 
 checksum:
   name_template: checksums.txt
