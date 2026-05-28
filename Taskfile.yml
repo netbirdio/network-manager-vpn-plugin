@@ -1,0 +1,154 @@
+version: '3'
+
+vars:
+  BIN: bin/nm-netbird-service
+  BUS_NAME: org.freedesktop.NetworkManager.netbird
+  OBJECT_PATH: /org/freedesktop/NetworkManager/VPN/Plugin
+  PLUGIN_IFACE: org.freedesktop.NetworkManager.VPN.Plugin
+
+tasks:
+  tidy:
+    desc: Download modules and tidy go.mod/go.sum
+    cmds:
+      - go mod tidy
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - gofmt -w ./cmd ./internal
+      - go mod tidy
+
+  build:
+    desc: Build the NetworkManager VPN plugin skeleton
+    cmds:
+      - go build -o {{.BIN}} ./cmd/nm-netbird-service
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Run unit tests with the Go race detector
+    cmds:
+      - go test -race ./...
+
+  run:session:
+    desc: Run the plugin on the session bus for local development
+    deps: [build]
+    cmds:
+      - ./{{.BIN}} --bus=session --debug
+
+  run:system:
+    desc: Run the plugin on the system bus, as NetworkManager would use it
+    deps: [build]
+    cmds:
+      - sudo ./{{.BIN}} --bus=system --debug
+
+  dbus:introspect:
+    desc: Introspect the development instance on the session bus
+    cmds:
+      - gdbus introspect --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}}
+
+  dbus:state:
+    desc: Read the plugin State property from the session bus
+    cmds:
+      - gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method org.freedesktop.DBus.Properties.Get "'{{.PLUGIN_IFACE}}'" "'State'"
+
+  dbus:need-secrets:
+    desc: Call NeedSecrets with an empty NetworkManager settings map
+    cmds:
+      - gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.NeedSecrets "{}"
+
+  dbus:connect:
+    desc: Call Connect with an empty NetworkManager settings map
+    cmds:
+      - gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.Connect "{}"
+
+  dbus:connect-interactive:
+    desc: Call ConnectInteractive with empty settings and details maps
+    cmds:
+      - gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.ConnectInteractive "{}" "{}"
+
+  dbus:disconnect:
+    desc: Call Disconnect on the development instance
+    cmds:
+      - gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.Disconnect
+
+  dbus:monitor:
+    desc: Monitor plugin D-Bus traffic/signals on the session bus
+    cmds:
+      - gdbus monitor --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}}
+
+  smoke:
+    desc: Build, launch on the session bus, introspect, call a few methods, then stop
+    deps: [build]
+    cmds:
+      - |
+        bash -euo pipefail <<'SH'
+        ./{{.BIN}} --bus=session --debug &
+        pid=$!
+        trap 'kill "$pid" >/dev/null 2>&1 || true; wait "$pid" 2>/dev/null || true' EXIT
+
+        for i in $(seq 1 30); do
+          if gdbus introspect --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} >/dev/null 2>&1; then
+            break
+          fi
+          sleep 0.1
+        done
+
+        gdbus introspect --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} >/dev/null
+        gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.NeedSecrets "{}"
+        gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.Connect "{}"
+        gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method org.freedesktop.DBus.Properties.Get "'{{.PLUGIN_IFACE}}'" "'State'"
+        gdbus call --session --dest {{.BUS_NAME}} --object-path {{.OBJECT_PATH}} --method {{.PLUGIN_IFACE}}.Disconnect
+
+        kill "$pid" >/dev/null 2>&1 || true
+        wait "$pid" 2>/dev/null || true
+        trap - EXIT
+        SH
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
+
+  patterns:
+    desc: Run pragmatic code-pattern review checks
+    cmds:
+      - opengrep --config ./opengrep/pragmatic-go.yml --exclude '*.pb.go' .
+
+  complexity:
+    desc: Run complexity-oriented checks
+    cmds:
+      - golangci-lint run --enable=gocognit --enable=gocyclo --enable=nestif --enable=funlen
+
+  quality:
+    desc: Run the standard local quality gate
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+      - task: lint
+      - task: patterns
+
+  quality:full:
+    desc: Run the full quality gate, including race tests
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+      - task: test:race
+      - task: lint
+      - task: patterns
+
+  hooks:install:
+    desc: Install local git hooks
+    cmds:
+      - chmod +x scripts/hooks/pre-commit scripts/install-hooks.sh
+      - ./scripts/install-hooks.sh

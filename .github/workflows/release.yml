@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GORELEASER_VER: "v2.14.3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || github.actor_id }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: ${{ runner.os }}-gotest-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-gotest-
+            ${{ runner.os }}-go-
+
+      - name: Install modules
+        run: go mod tidy
+
+      - name: Check git status
+        run: git --no-pager diff --exit-code
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run race tests
+        run: go test -race ./...
+
+  snapshot:
+    name: Build snapshot artifacts
+    needs: test
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # It is required for GoReleaser to work properly
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: ${{ runner.os }}-go-releaser-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-releaser-
+
+      - name: Install modules
+        run: go mod tidy
+
+      - name: Check git status
+        run: git --no-pager diff --exit-code
+
+      - name: Build snapshot artifacts
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VER }}
+          args: release --snapshot --clean --skip=publish
+
+      - name: Upload nm-netbird-service Linux snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: nm-netbird-service-linux-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-snapshot:
+    name: Publish snapshot release
+    needs: snapshot
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download snapshot artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nm-netbird-service-linux-snapshot
+          path: dist
+
+      - name: Publish snapshot release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f snapshot "$GITHUB_SHA"
+          git push --force origin refs/tags/snapshot
+
+          notes="Latest successful main branch snapshot. This release is overwritten by each successful main build."
+          if gh release view snapshot >/dev/null 2>&1; then
+            gh release edit snapshot --title "Snapshot" --notes "$notes" --prerelease
+          else
+            gh release create snapshot --title "Snapshot" --notes "$notes" --prerelease --latest=false
+          fi
+
+          gh release upload snapshot dist/*.tar.gz dist/checksums.txt --clobber
+
+  release:
+    name: Publish release artifacts
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # It is required for GoReleaser to work properly
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Get Go environment
+        run: |
+          echo "cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.cache }}
+            ${{ env.modcache }}
+          key: ${{ runner.os }}-go-releaser-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-releaser-
+
+      - name: Install modules
+        run: go mod tidy
+
+      - name: Check git status
+        run: git --no-pager diff --exit-code
+
+      - name: Publish release artifacts
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: ${{ env.GORELEASER_VER }}
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

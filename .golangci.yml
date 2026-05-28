@@ -1,0 +1,81 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  default: none
+  enable:
+    # Correctness / obvious bugs
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - errcheck
+    - bodyclose
+
+    # Simplicity / maintainability pressure
+    - gocognit
+    - gocyclo
+    - nestif
+    - funlen
+    - dupl
+    - unparam
+    - unconvert
+    - prealloc
+
+    # Style and consistency
+    - revive
+    - misspell
+    - whitespace
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    gocognit:
+      min-complexity: 15
+
+    gocyclo:
+      min-complexity: 15
+
+    nestif:
+      min-complexity: 4
+
+    funlen:
+      lines: 100
+      statements: 60
+      ignore-comments: true
+
+    dupl:
+      threshold: 120
+
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+          disabled: true
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: unreachable-code
+        - name: unused-parameter
+          disabled: true
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false

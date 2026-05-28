@@ -1,0 +1,42 @@
+version: 2
+
+project_name: nm-netbird-service
+
+builds:
+  - id: nm-netbird-service
+    main: ./cmd/nm-netbird-service
+    binary: nm-netbird-service
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - '7'
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: nm-netbird-service
+    ids:
+      - nm-netbird-service
+    formats:
+      - tar.gz
+    name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'

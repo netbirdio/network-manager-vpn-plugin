@@ -1,0 +1,114 @@
+rules:
+  - id: go-review-single-method-interface
+    languages: [go]
+    severity: INFO
+    message: "Review this interface. Interfaces are useful at boundaries, but a small internal interface with one implementation may add indirection without simplifying the code."
+    pattern: |
+      type $NAME interface {
+        $METHOD(...)
+      }
+
+  - id: go-review-functional-option
+    languages: [go]
+    severity: INFO
+    message: "Review this functional option. For internal or single-use code, a plain config struct is often clearer and more pragmatic."
+    pattern: |
+      type $OPTION func(*$CONFIG)
+
+  - id: go-review-option-application-loop
+    languages: [go]
+    severity: INFO
+    message: "Review this options loop. Functional options can hide defaults and behavior. Prefer direct config structs unless the API needs extensibility."
+    pattern: |
+      for _, $OPT := range $OPTS {
+        $OPT(&$CONFIG)
+      }
+
+  - id: go-review-strategy-list-dispatch
+    languages: [go]
+    severity: INFO
+    message: "Review this strategy-list dispatch. If the set of cases is small or stable, a switch or direct map may be easier to read."
+    patterns:
+      - pattern: |
+          for _, $ITEM := range $ITEMS {
+            if $ITEM.$CANHANDLE($ARG) {
+              return $ITEM.$HANDLE(...)
+            }
+          }
+
+  - id: go-review-empty-interface
+    languages: [go]
+    severity: WARNING
+    message: "Avoid interface{} or any unless there is a clear boundary or compatibility reason. Prefer concrete types or generics where appropriate."
+    pattern-either:
+      - pattern: |
+          var $X interface{}
+      - pattern: |
+          var $X any
+      - pattern: |
+          func $F(..., $X interface{}, ...) { ... }
+      - pattern: |
+          func $F(..., $X any, ...) { ... }
+      - pattern: |
+          type $S struct { $F interface{} }
+      - pattern: |
+          type $S struct { $F any }
+
+  - id: go-review-context-background-inside-function
+    languages: [go]
+    severity: INFO
+    message: "Review context.Background usage inside implementation code. Prefer passing context through, unless intentionally creating independent cleanup/shutdown work."
+    pattern: context.Background()
+
+  - id: go-review-panic-in-library-code
+    languages: [go]
+    severity: WARNING
+    message: "Review panic usage. Library/application implementation code should usually return errors unless panic is truly unrecoverable."
+    pattern: panic(...)
+
+  - id: go-review-global-mutable-state
+    languages: [go]
+    severity: INFO
+    message: "Review global mutable state. Prefer explicit ownership and dependency passing unless this is a true process-wide singleton."
+    pattern-regex: '^\s*var\s+[A-Za-z_][A-Za-z0-9_]*\s*='
+
+  - id: go-review-goroutine-without-comment
+    languages: [go]
+    severity: INFO
+    message: "Review goroutine lifecycle. Make ownership, cancellation, and error handling obvious."
+    pattern: |
+      go func(...) {
+        ...
+      }(...)
+
+  - id: go-review-reflect-usage
+    languages: [go]
+    severity: INFO
+    message: "Review reflection usage. Reflection can hide behavior and weaken local reasoning; prefer concrete code unless needed."
+    pattern: reflect.$X(...)
+
+  - id: go-review-map-string-any
+    languages: [go]
+    severity: INFO
+    message: "Review map[string]any. Dynamic maps are sometimes necessary at boundaries, but concrete structs are clearer inside implementation code."
+    pattern-either:
+      - pattern: |
+          var $X map[string]any
+      - pattern: |
+          var $X map[string]interface{}
+      - pattern: |
+          func $F(..., $X map[string]any, ...) { ... }
+      - pattern: |
+          func $F(..., $X map[string]interface{}, ...) { ... }
+      - pattern: |
+          type $S struct { $F map[string]any }
+      - pattern: |
+          type $S struct { $F map[string]interface{} }
+      - pattern: |
+          $X := map[string]any{...}
+      - pattern: |
+          $X := map[string]interface{}{...}
+      - pattern: |
+          map[string]any{...}
+      - pattern: |
+          map[string]interface{}{...}

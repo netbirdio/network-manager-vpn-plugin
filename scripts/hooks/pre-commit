@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+if command -v task >/dev/null 2>&1; then
+  task quality
+else
+  echo "task command not found; please install Taskfile or run checks manually"
+  exit 1
+fi
