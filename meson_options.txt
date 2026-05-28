@@ -1,0 +1,4 @@
+option('nm_plugin_dir',
+  type: 'string',
+  value: '/usr/lib/NetworkManager',
+  description: 'Directory for libnm VPN editor plugins')

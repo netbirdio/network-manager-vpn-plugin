@@ -1,4 +1,6 @@
 /bin/
+/build/
+/builddir/
 /.vm/
 /nm-netbird-service
 /fake-netbird-daemon

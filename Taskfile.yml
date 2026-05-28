@@ -2,6 +2,10 @@ version: '3'
 
 vars:
   BIN: bin/nm-netbird-service
+  AUTH_DIALOG_BIN: bin/nm-netbird-auth-dialog
+  PROPERTIES_PLUGIN: bin/libnm-vpn-plugin-netbird.so
+  PROPERTIES_MODEL_TEST: bin/nm-netbird-editor-model-test
+  PROPERTIES_PLUGIN_TEST: bin/nm-netbird-editor-plugin-test
   BUS_NAME: org.freedesktop.NetworkManager.netbird
   OBJECT_PATH: /org/freedesktop/NetworkManager/VPN/Plugin
   PLUGIN_IFACE: org.freedesktop.NetworkManager.VPN.Plugin
@@ -19,14 +23,40 @@ tasks:
       - go mod tidy
 
   build:
-    desc: Build the NetworkManager VPN plugin skeleton
+    desc: Build the NetworkManager VPN plugin binaries and editor plugin
+    deps: [build:go, build:properties]
+
+  build:go:
+    desc: Build the Go service and auth-dialog binaries
     cmds:
+      - mkdir -p bin
       - go build -o {{.BIN}} ./cmd/nm-netbird-service
+      - go build -o {{.AUTH_DIALOG_BIN}} ./cmd/nm-netbird-auth-dialog
+
+  build:properties:
+    desc: Build the libnm VPN properties editor plugin
+    cmds:
+      - mkdir -p bin
+      - cc -Wall -Wextra -fPIC -shared -o {{.PROPERTIES_PLUGIN}} properties/nm-netbird-editor-model.c properties/nm-netbird-editor.c properties/nm-netbird-editor-plugin.c $(pkg-config --cflags --libs libnm gtk+-3.0)
 
   test:
     desc: Run unit tests
+    deps: [test:go, test:properties]
+
+  test:go:
+    desc: Run Go unit tests
     cmds:
       - go test ./...
+
+  test:properties:
+    desc: Run properties editor model tests
+    deps: [build:properties]
+    cmds:
+      - mkdir -p bin
+      - cc -Wall -Wextra -o {{.PROPERTIES_MODEL_TEST}} properties/nm-netbird-editor-model.c properties/nm-netbird-editor-model-test.c $(pkg-config --cflags --libs libnm)
+      - ./{{.PROPERTIES_MODEL_TEST}}
+      - cc -Wall -Wextra -o {{.PROPERTIES_PLUGIN_TEST}} properties/nm-netbird-editor-plugin-test.c $(pkg-config --cflags --libs libnm)
+      - NETBIRD_EDITOR_PLUGIN_PATH=$(pwd)/{{.PROPERTIES_PLUGIN}} ./{{.PROPERTIES_PLUGIN_TEST}}
 
   test:race:
     desc: Run unit tests with the Go race detector

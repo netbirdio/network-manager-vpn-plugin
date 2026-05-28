@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,11 +45,16 @@ const (
 	defaultStatusCallTimeout  = 5 * time.Second
 )
 
-const interactiveSSORequiredMessage = "This profile needs interactive SSO; rerun with nmcli connection up <name> --ask, or run netbird login first."
+const (
+	interactiveSSORequiredMessage = "This profile needs interactive SSO; rerun with nmcli connection up <name> --ask, or run netbird login first."
+	setupKeyRequiredMessage       = "NetBird setup key required."
+	ssoRequiredMessage            = "NetBird SSO login required."
+)
 
 var (
 	errMissingSetupKey      = errors.New("setup-key authentication requested but no setup-key secret was provided")
 	errInteractiveSSONeeded = errors.New("interactive SSO required")
+	errPromptUnavailable    = errors.New("activation prompt is no longer available")
 )
 
 // ServiceOptions configures daemon integration behavior.
@@ -88,6 +94,21 @@ type Service struct {
 	client           daemonclient.Client
 	activeProfile    daemonclient.ProfileRef
 	sessionID        uint64
+	activationID     uint64
+	prompt           *activationPrompt
+}
+
+type activationPromptKind string
+
+const (
+	activationPromptSetupKey activationPromptKind = "setup-key"
+	activationPromptSSO      activationPromptKind = "sso"
+)
+
+type activationPrompt struct {
+	activationID uint64
+	kind         activationPromptKind
+	result       chan activationSettings
 }
 
 // NewService creates an initialized VPN plugin service. Call Export before
@@ -166,12 +187,50 @@ func (s *Service) NeedSecrets(settings ConnectionSettings) (string, *dbus.Error)
 	return "", nil
 }
 
-// NewSecrets delivers additional secrets after SecretsRequired. NetworkManager
-// includes those secrets in a subsequent Connect/ConnectInteractive call; this
-// method is retained for interface completeness.
+// NewSecrets delivers additional settings after a SecretsRequired signal. During
+// an activation, the service uses this to resume a setup-key prompt or to cancel
+// an SSO wait when a frontend returns an explicit cancellation marker.
 func (s *Service) NewSecrets(connection ConnectionSettings) *dbus.Error {
 	s.logf("NewSecrets(%s)", summarizeSettings(connection))
+	settings := parseActivationSettings(connection)
+
+	s.lifecycleMu.Lock()
+	prompt := s.prompt
+	if prompt == nil {
+		s.lifecycleMu.Unlock()
+		return nil
+	}
+
+	if settings.PromptActivationID == "" {
+		s.logf("NewSecrets missing activation id; accepting for current in-flight prompt")
+	} else if settings.PromptActivationID != formatActivationID(prompt.activationID) {
+		s.lifecycleMu.Unlock()
+		s.logf("ignoring stale NewSecrets for activation %s", settings.PromptActivationID)
+		return nil
+	}
+
+	s.handleNewSecretsLocked(prompt, settings)
+	s.lifecycleMu.Unlock()
 	return nil
+}
+
+func (s *Service) handleNewSecretsLocked(prompt *activationPrompt, settings activationSettings) {
+	switch prompt.kind {
+	case activationPromptSetupKey:
+		s.prompt = nil
+		select {
+		case prompt.result <- settings:
+		default:
+		}
+	case activationPromptSSO:
+		if !settings.SSOContinue && !settings.SSOCancel {
+			return
+		}
+		s.prompt = nil
+		if settings.SSOCancel && s.activationCancel != nil {
+			s.activationCancel()
+		}
+	}
 }
 
 // Disconnect is called by NetworkManager to stop the VPN service. NetBird's
@@ -193,7 +252,9 @@ func (s *Service) Disconnect() *dbus.Error {
 	client = s.client
 	s.client = nil
 	s.activeProfile = daemonclient.ProfileRef{}
+	s.prompt = nil
 	s.sessionID++
+	s.activationID++
 	s.lifecycleMu.Unlock()
 
 	if client != nil {
@@ -239,9 +300,17 @@ func (s *Service) SetIp6Config(config VariantMap) *dbus.Error {
 	return nil
 }
 
-// SetFailure logs a failure string supplied over D-Bus.
+// SetFailure logs a failure string supplied over D-Bus and cancels any pending
+// interactive prompt for the current activation.
 func (s *Service) SetFailure(reason string) *dbus.Error {
 	s.logf("SetFailure(%q)", reason)
+
+	s.lifecycleMu.Lock()
+	if s.activationCancel != nil {
+		s.activationCancel()
+	}
+	s.prompt = nil
+	s.lifecycleMu.Unlock()
 	return nil
 }
 
@@ -283,23 +352,30 @@ func (s *Service) EmitFailure(reason PluginFailure) error {
 // immediately. The long-running daemon work continues in runActivation and
 // reports progress via StateChanged, Config, LoginBanner, and Failure signals.
 func (s *Service) startActivation(connection ConnectionSettings, details VariantMap, interactive bool) *dbus.Error {
-	activationCtx, activationCancel, dbusErr := s.reserveActivation()
+	activationCtx, activationCancel, activationID, dbusErr := s.reserveActivation()
 	if dbusErr != nil {
 		return dbusErr
 	}
 
 	s.setState(ServiceStateStarting)
-	go s.runActivation(activationCtx, activationCancel, connection, details, interactive)
+	go s.runActivation(activationCtx, activationCancel, activationID, connection, details, interactive)
 	return nil
 }
 
-func (s *Service) runActivation(activationCtx context.Context, activationCancel context.CancelFunc, connection ConnectionSettings, details VariantMap, interactive bool) {
+func (s *Service) runActivation(
+	activationCtx context.Context,
+	activationCancel context.CancelFunc,
+	activationID uint64,
+	connection ConnectionSettings,
+	details VariantMap,
+	interactive bool,
+) {
 	ctx, timeoutCancel := s.activationPhaseContext(activationCtx)
 	var client daemonclient.Client
 	success := false
 	daemonUp := false
 	defer func() {
-		s.finishActivationAttempt(success, daemonUp, client, activationCancel, timeoutCancel)
+		s.finishActivationAttempt(activationID, success, daemonUp, client, activationCancel, timeoutCancel)
 	}()
 
 	settings := mergeActivationDetails(parseActivationSettings(connection), details)
@@ -325,7 +401,7 @@ func (s *Service) runActivation(activationCtx context.Context, activationCancel 
 		settings.Profile.Username = currentProcessUsername()
 	}
 
-	waitedForSSO, err := s.authenticate(ctx, activationCtx, client, settings, interactive)
+	waitedForSSO, err := s.authenticate(ctx, activationCtx, activationID, client, settings, interactive)
 	if err != nil {
 		s.failActivation(PluginFailureLoginFailed, err)
 		return
@@ -339,7 +415,7 @@ func (s *Service) runActivation(activationCtx context.Context, activationCancel 
 	}
 
 	var failure PluginFailure
-	ctx, timeoutCancel, failure, err = s.upWithAuthenticationRetry(ctx, activationCtx, timeoutCancel, client, resolvedProfile, settings, interactive)
+	ctx, timeoutCancel, failure, err = s.upWithAuthenticationRetry(ctx, activationCtx, activationID, timeoutCancel, client, resolvedProfile, settings, interactive)
 	if err != nil {
 		s.failActivation(failure, err)
 		return
@@ -364,8 +440,16 @@ func (s *Service) runActivation(activationCtx context.Context, activationCancel 
 	s.setStateForActiveSession(sessionID, ServiceStateStarted)
 }
 
-func (s *Service) finishActivationAttempt(success bool, daemonUp bool, client daemonclient.Client, activationCancel context.CancelFunc, timeoutCancel context.CancelFunc) {
+func (s *Service) finishActivationAttempt(
+	activationID uint64,
+	success bool,
+	daemonUp bool,
+	client daemonclient.Client,
+	activationCancel context.CancelFunc,
+	timeoutCancel context.CancelFunc,
+) {
 	timeoutCancel()
+	s.clearPromptForActivation(activationID)
 	if !success && daemonUp && client != nil {
 		downCtx, downCancel := context.WithTimeout(context.Background(), s.operationTimeout)
 		if err := client.Down(downCtx); err != nil {
@@ -387,6 +471,7 @@ func (s *Service) finishActivationAttempt(success bool, daemonUp bool, client da
 func (s *Service) upWithAuthenticationRetry(
 	ctx context.Context,
 	activationCtx context.Context,
+	activationID uint64,
 	timeoutCancel context.CancelFunc,
 	client daemonclient.Client,
 	resolvedProfile daemonclient.ProfileRef,
@@ -402,7 +487,7 @@ func (s *Service) upWithAuthenticationRetry(
 	}
 
 	settings.AuthMode = "sso"
-	waitedForSSO, loginErr := s.authenticate(ctx, activationCtx, client, settings, interactive)
+	waitedForSSO, loginErr := s.authenticate(ctx, activationCtx, activationID, client, settings, interactive)
 	if loginErr != nil {
 		return ctx, timeoutCancel, PluginFailureLoginFailed, loginErr
 	}
@@ -431,12 +516,26 @@ func (s *Service) resetActivationPhaseAfterSSO(
 	return s.activationPhaseContext(activationCtx)
 }
 
-func (s *Service) authenticate(ctx context.Context, activationCtx context.Context, client daemonclient.Client, settings activationSettings, interactive bool) (bool, error) {
+func (s *Service) authenticate(
+	ctx context.Context,
+	activationCtx context.Context,
+	activationID uint64,
+	client daemonclient.Client,
+	settings activationSettings,
+	interactive bool,
+) (bool, error) {
 	if !settings.shouldLogin(interactive) {
 		return false, nil
 	}
 	if settings.AuthMode == "setup-key" && strings.TrimSpace(settings.SetupKey) == "" {
-		return false, errMissingSetupKey
+		if !interactive {
+			return false, errMissingSetupKey
+		}
+		var err error
+		settings, err = s.waitForSetupKeySecret(ctx, activationID, settings)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	response, err := client.Login(ctx, settings.daemonLoginRequest())
@@ -453,6 +552,7 @@ func (s *Service) authenticate(ctx context.Context, activationCtx context.Contex
 	if err := s.EmitLoginBanner(formatSSOLoginBanner(response)); err != nil {
 		s.logger.Printf("emit SSO login banner failed: %v", err)
 	}
+	s.startSSOPrompt(activationID, response, settings)
 	// The vendored LoginResponse does not expose a device-code expiry, so use the
 	// configured SSO wait timeout instead of the shorter activation phase timeout.
 	ssoCtx, cancel := s.ssoWaitContext(activationCtx)
@@ -468,6 +568,108 @@ func (s *Service) authenticate(ctx context.Context, activationCtx context.Contex
 		return true, err
 	}
 	return true, nil
+}
+
+func (s *Service) waitForSetupKeySecret(ctx context.Context, activationID uint64, settings activationSettings) (activationSettings, error) {
+	prompt := &activationPrompt{
+		activationID: activationID,
+		kind:         activationPromptSetupKey,
+		result:       make(chan activationSettings, 1),
+	}
+	if !s.registerActivationPrompt(prompt) {
+		return settings, errPromptUnavailable
+	}
+	if err := s.EmitSecretsRequired(setupKeyRequiredMessage, setupKeyPromptHints(activationID)); err != nil {
+		s.logger.Printf("emit setup-key SecretsRequired failed: %v", err)
+	}
+
+	select {
+	case delivered := <-prompt.result:
+		settings = mergePromptSettings(settings, delivered)
+		if strings.TrimSpace(settings.SetupKey) == "" {
+			return settings, errMissingSetupKey
+		}
+		return settings, nil
+	case <-ctx.Done():
+		return settings, fmt.Errorf("timeout waiting for setup-key secret: %w", ctx.Err())
+	}
+}
+
+func (s *Service) startSSOPrompt(activationID uint64, response daemonclient.LoginResponse, settings activationSettings) {
+	prompt := &activationPrompt{
+		activationID: activationID,
+		kind:         activationPromptSSO,
+	}
+	if !s.registerActivationPrompt(prompt) {
+		return
+	}
+	if err := s.EmitSecretsRequired(ssoRequiredMessage, ssoPromptHints(activationID, response, settings)); err != nil {
+		s.logger.Printf("emit SSO SecretsRequired failed: %v", err)
+	}
+}
+
+func (s *Service) registerActivationPrompt(prompt *activationPrompt) bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+
+	if !s.activating || prompt.activationID != s.activationID {
+		return false
+	}
+	s.prompt = prompt
+	return true
+}
+
+func (s *Service) clearPromptForActivation(activationID uint64) {
+	s.lifecycleMu.Lock()
+	if s.prompt != nil && s.prompt.activationID == activationID {
+		s.prompt = nil
+	}
+	s.lifecycleMu.Unlock()
+}
+
+func mergePromptSettings(current activationSettings, delivered activationSettings) activationSettings {
+	if delivered.SetupKey != "" {
+		current.SetupKey = delivered.SetupKey
+	}
+	if delivered.Hint != "" {
+		current.Hint = delivered.Hint
+	}
+	return current
+}
+
+func setupKeyPromptHints(activationID uint64) []string {
+	return []string{
+		"setup-key",
+		formatPromptHint(netbirdPromptActivationID, formatActivationID(activationID)),
+	}
+}
+
+func ssoPromptHints(activationID uint64, response daemonclient.LoginResponse, settings activationSettings) []string {
+	hints := []string{
+		formatPromptHint(netbirdPromptActivationID, formatActivationID(activationID)),
+		formatPromptHint(netbirdSSOHint, "true"),
+	}
+	if response.VerificationURI != "" {
+		hints = append(hints, formatPromptHint(netbirdSSOVerificationURIHint, response.VerificationURI))
+	}
+	if response.VerificationURIComplete != "" {
+		hints = append(hints, formatPromptHint(netbirdSSOVerificationURIComplete, response.VerificationURIComplete))
+	}
+	if response.UserCode != "" {
+		hints = append(hints, formatPromptHint(netbirdSSOUserCodeHint, response.UserCode))
+	}
+	if settings.Hint != "" {
+		hints = append(hints, formatPromptHint(netbirdSSOLoginHint, settings.Hint))
+	}
+	return hints
+}
+
+func formatPromptHint(key string, value string) string {
+	return key + "=" + value
+}
+
+func formatActivationID(id uint64) string {
+	return strconv.FormatUint(id, 10)
 }
 
 func (s *Service) activationPhaseContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -654,24 +856,28 @@ func (s *Service) logDaemonStatus(mapped nbstatus.Mapping) {
 	}
 }
 
-func (s *Service) reserveActivation() (context.Context, context.CancelFunc, *dbus.Error) {
+func (s *Service) reserveActivation() (context.Context, context.CancelFunc, uint64, *dbus.Error) {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 
 	if s.activating || s.client != nil {
-		return nil, nil, newDBusError(dbusErrorVPNAlreadyActive, "a NetBird activation is already in progress or active")
+		return nil, nil, 0, newDBusError(dbusErrorVPNAlreadyActive, "a NetBird activation is already in progress or active")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	s.activationID++
+	activationID := s.activationID
 	s.activating = true
 	s.activationCancel = cancel
-	return ctx, cancel, nil
+	s.prompt = nil
+	return ctx, cancel, activationID, nil
 }
 
 func (s *Service) finishFailedActivation() {
 	s.lifecycleMu.Lock()
 	s.activating = false
 	s.activationCancel = nil
+	s.prompt = nil
 	s.lifecycleMu.Unlock()
 }
 
@@ -685,6 +891,7 @@ func (s *Service) completeActivation(activationCtx context.Context, client daemo
 
 	s.activating = false
 	s.activationCancel = nil
+	s.prompt = nil
 	s.client = client
 	s.activeProfile = activeProfile
 	s.sessionID++

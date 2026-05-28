@@ -14,9 +14,18 @@ if [ -d "$SCRIPT_DIR/../packaging" ]; then
 fi
 
 LIBEXEC_DIR=${LIBEXEC_DIR:-/usr/libexec}
+NM_PLUGIN_DIR=${NM_PLUGIN_DIR:-/usr/lib/NetworkManager}
 NM_VPN_DIR=${NM_VPN_DIR:-/etc/NetworkManager/VPN}
 DBUS_POLICY_DIR=${DBUS_POLICY_DIR:-/etc/dbus-1/system.d}
 NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
+PROPERTIES_BUILD_DIR=
+
+cleanup() {
+  if [ -n "$PROPERTIES_BUILD_DIR" ]; then
+    rm -rf "$PROPERTIES_BUILD_DIR"
+  fi
+}
+trap cleanup EXIT HUP INT TERM
 
 SERVICE_SRC=${SERVICE_SRC:-$SCRIPT_DIR/nm-netbird-service}
 if [ ! -f "$SERVICE_SRC" ] && [ -f "$SCRIPT_DIR/bin/nm-netbird-service" ]; then
@@ -24,6 +33,22 @@ if [ ! -f "$SERVICE_SRC" ] && [ -f "$SCRIPT_DIR/bin/nm-netbird-service" ]; then
 fi
 if [ ! -f "$SERVICE_SRC" ] && [ -f "$SOURCE_ROOT/bin/nm-netbird-service" ]; then
   SERVICE_SRC=$SOURCE_ROOT/bin/nm-netbird-service
+fi
+
+AUTH_DIALOG_SRC=${AUTH_DIALOG_SRC:-$SCRIPT_DIR/nm-netbird-auth-dialog}
+if [ ! -f "$AUTH_DIALOG_SRC" ] && [ -f "$SCRIPT_DIR/bin/nm-netbird-auth-dialog" ]; then
+  AUTH_DIALOG_SRC=$SCRIPT_DIR/bin/nm-netbird-auth-dialog
+fi
+if [ ! -f "$AUTH_DIALOG_SRC" ] && [ -f "$SOURCE_ROOT/bin/nm-netbird-auth-dialog" ]; then
+  AUTH_DIALOG_SRC=$SOURCE_ROOT/bin/nm-netbird-auth-dialog
+fi
+
+PROPERTIES_PLUGIN_SRC=${PROPERTIES_PLUGIN_SRC:-$SCRIPT_DIR/libnm-vpn-plugin-netbird.so}
+if [ ! -f "$PROPERTIES_PLUGIN_SRC" ] && [ -f "$SCRIPT_DIR/bin/libnm-vpn-plugin-netbird.so" ]; then
+  PROPERTIES_PLUGIN_SRC=$SCRIPT_DIR/bin/libnm-vpn-plugin-netbird.so
+fi
+if [ ! -f "$PROPERTIES_PLUGIN_SRC" ] && [ -f "$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird.so" ]; then
+  PROPERTIES_PLUGIN_SRC=$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird.so
 fi
 
 VPN_NAME_SRC=${VPN_NAME_SRC:-$SOURCE_ROOT/packaging/NetworkManager/VPN/nm-netbird-service.name}
@@ -71,6 +96,43 @@ install_config_noreplace() {
   echo "warning: kept existing $dst; installed updated sample at $dst.new" >&2
 }
 
+install_vpn_metadata() {
+  tmp=$(mktemp "${TMPDIR:-/tmp}/nm-netbird-service.name.XXXXXX")
+  awk -v plugin="$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird.so" '
+    /^plugin=/ { print "plugin=" plugin; next }
+    { print }
+  ' "$VPN_NAME_SRC" >"$tmp"
+  install_file "$tmp" "$NM_VPN_DIR/nm-netbird-service.name" 0644
+  rm -f "$tmp"
+}
+
+build_properties_plugin() {
+  src_dir=$SOURCE_ROOT/properties
+  if [ ! -f "$src_dir/nm-netbird-editor-model.c" ] || \
+    [ ! -f "$src_dir/nm-netbird-editor.c" ] || \
+    [ ! -f "$src_dir/nm-netbird-editor-plugin.c" ]; then
+    return 1
+  fi
+
+  if ! command -v cc >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then
+    return 1
+  fi
+
+  if ! pkg-config --exists libnm gtk+-3.0; then
+    return 1
+  fi
+
+  PROPERTIES_BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nm-netbird-properties.XXXXXX")
+  echo "building libnm-vpn-plugin-netbird.so from bundled source"
+  cc -Wall -Wextra -fPIC -shared \
+    -o "$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so" \
+    "$src_dir/nm-netbird-editor-model.c" \
+    "$src_dir/nm-netbird-editor.c" \
+    "$src_dir/nm-netbird-editor-plugin.c" \
+    $(pkg-config --cflags --libs libnm gtk+-3.0)
+  PROPERTIES_PLUGIN_SRC=$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so
+}
+
 reload_dbus_policy() {
   if command -v dbus-send >/dev/null 2>&1; then
     if dbus-send --system --type=method_call --dest=org.freedesktop.DBus \
@@ -116,13 +178,25 @@ reload_networkmanager() {
   echo "warning: could not reload NetworkManager automatically; restart NetworkManager if vpn-type netbird is not visible" >&2
 }
 
+if [ ! -f "$PROPERTIES_PLUGIN_SRC" ]; then
+  if ! build_properties_plugin; then
+    echo "error: missing required file: $PROPERTIES_PLUGIN_SRC" >&2
+    echo "error: build bin/libnm-vpn-plugin-netbird.so first, or install C build dependencies: cc, pkg-config, libnm, and GTK 3" >&2
+    exit 1
+  fi
+fi
+
 require_file "$SERVICE_SRC"
+require_file "$AUTH_DIALOG_SRC"
+require_file "$PROPERTIES_PLUGIN_SRC"
 require_file "$VPN_NAME_SRC"
 require_file "$DBUS_POLICY_SRC"
 require_file "$NM_UNMANAGED_SRC"
 
 install_file "$SERVICE_SRC" "$LIBEXEC_DIR/nm-netbird-service" 0755
-install_file "$VPN_NAME_SRC" "$NM_VPN_DIR/nm-netbird-service.name" 0644
+install_file "$AUTH_DIALOG_SRC" "$LIBEXEC_DIR/nm-netbird-auth-dialog" 0755
+install_file "$PROPERTIES_PLUGIN_SRC" "$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird.so" 0755
+install_vpn_metadata
 install_file "$DBUS_POLICY_SRC" "$DBUS_POLICY_DIR/nm-netbird-service.conf" 0644
 install_config_noreplace "$NM_UNMANAGED_SRC" "$NM_CONF_DIR/90-netbird-unmanaged.conf" 0644
 

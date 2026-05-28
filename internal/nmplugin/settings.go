@@ -11,7 +11,18 @@ import (
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
 )
 
-const vpnSettingName = "vpn"
+const (
+	vpnSettingName = "vpn"
+
+	netbirdPromptActivationID         = "x-netbird-activation-id"
+	netbirdSSOHint                    = "x-netbird-sso"
+	netbirdSSOVerificationURIHint     = "x-netbird-sso-verification-uri"
+	netbirdSSOVerificationURIComplete = "x-netbird-sso-verification-uri-complete"
+	netbirdSSOUserCodeHint            = "x-netbird-sso-user-code"
+	netbirdSSOLoginHint               = "x-netbird-sso-hint"
+	netbirdSSOContinue                = "x-netbird-sso-continue"
+	netbirdSSOCancel                  = "x-netbird-sso-cancel"
+)
 
 type activationSettings struct {
 	Profile       daemonclient.ProfileRef
@@ -23,6 +34,15 @@ type activationSettings struct {
 	PreSharedKey  string
 	Hint          string
 	AuthMode      string
+
+	PromptActivationID         string
+	SSORequested               bool
+	SSOVerificationURI         string
+	SSOVerificationURIComplete string
+	SSOUserCode                string
+	SSOHint                    string
+	SSOContinue                bool
+	SSOCancel                  bool
 }
 
 func parseActivationSettings(settings ConnectionSettings) activationSettings {
@@ -42,14 +62,22 @@ func parseActivationSettings(settings ConnectionSettings) activationSettings {
 			ProfileName: profileName,
 			Username:    username,
 		},
-		SetupKey:      firstSetting(values, "setup-key", "setupKey", "netbird-setup-key"),
-		ManagementURL: firstSetting(values, "management-url", "managementUrl", "netbird-management-url"),
-		AdminURL:      firstSetting(values, "admin-url", "adminURL", "netbird-admin-url"),
-		Hostname:      firstSetting(values, "hostname", "host-name"),
-		InterfaceName: firstSetting(values, "interface-name", "interfaceName", "netbird-interface-name"),
-		PreSharedKey:  firstSetting(values, "pre-shared-key", "preshared-key", "preSharedKey"),
-		Hint:          firstSetting(values, "hint", "login-hint", "sso-hint"),
-		AuthMode:      normalizeAuthMode(firstSetting(values, "auth", "auth-mode", "authentication", "login-mode")),
+		SetupKey:                   firstSetting(values, "setup-key", "setupKey", "netbird-setup-key"),
+		ManagementURL:              firstSetting(values, "management-url", "managementUrl", "netbird-management-url"),
+		AdminURL:                   firstSetting(values, "admin-url", "adminURL", "netbird-admin-url"),
+		Hostname:                   firstSetting(values, "hostname", "host-name"),
+		InterfaceName:              firstSetting(values, "interface-name", "interfaceName", "netbird-interface-name"),
+		PreSharedKey:               firstSetting(values, "pre-shared-key", "preshared-key", "preSharedKey"),
+		Hint:                       firstSetting(values, "hint", "login-hint", "sso-hint"),
+		AuthMode:                   normalizeAuthMode(firstSetting(values, "auth", "auth-mode", "authentication", "login-mode")),
+		PromptActivationID:         firstSetting(values, netbirdPromptActivationID),
+		SSORequested:               boolSetting(values, netbirdSSOHint),
+		SSOVerificationURI:         firstSetting(values, netbirdSSOVerificationURIHint),
+		SSOVerificationURIComplete: firstSetting(values, netbirdSSOVerificationURIComplete),
+		SSOUserCode:                firstSetting(values, netbirdSSOUserCodeHint),
+		SSOHint:                    firstSetting(values, netbirdSSOLoginHint),
+		SSOContinue:                boolSetting(values, netbirdSSOContinue),
+		SSOCancel:                  boolSetting(values, netbirdSSOCancel),
 	}
 }
 
@@ -101,6 +129,30 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 	}
 	if value := firstSetting(values, "hint", "login-hint", "sso-hint"); value != "" {
 		settings.Hint = value
+	}
+	if value := firstSetting(values, netbirdPromptActivationID); value != "" {
+		settings.PromptActivationID = value
+	}
+	if boolSetting(values, netbirdSSOHint) {
+		settings.SSORequested = true
+	}
+	if value := firstSetting(values, netbirdSSOVerificationURIHint); value != "" {
+		settings.SSOVerificationURI = value
+	}
+	if value := firstSetting(values, netbirdSSOVerificationURIComplete); value != "" {
+		settings.SSOVerificationURIComplete = value
+	}
+	if value := firstSetting(values, netbirdSSOUserCodeHint); value != "" {
+		settings.SSOUserCode = value
+	}
+	if value := firstSetting(values, netbirdSSOLoginHint); value != "" {
+		settings.SSOHint = value
+	}
+	if boolSetting(values, netbirdSSOContinue) {
+		settings.SSOContinue = true
+	}
+	if boolSetting(values, netbirdSSOCancel) {
+		settings.SSOCancel = true
 	}
 	return settings
 }
@@ -160,6 +212,16 @@ func firstSetting(values map[string]string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func boolSetting(values map[string]string, key string) bool {
+	value := strings.ToLower(strings.TrimSpace(values[normalizeSettingKey(key)]))
+	switch value {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func networkManagerConnectionProfileName(settings ConnectionSettings) string {
