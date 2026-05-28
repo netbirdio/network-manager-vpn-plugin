@@ -149,11 +149,7 @@ func TestStaleSetupKeyNewSecretsDoesNotCompleteActivation(t *testing.T) {
 		},
 	}
 	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, staleSecrets).Store())
-	time.Sleep(100 * time.Millisecond)
-
-	fake.mu.Lock()
-	require.Empty(t, fake.loginRequests)
-	fake.mu.Unlock()
+	assertNoLoginRequestsUntil(t, fake)
 	assertState(t, obj, nmplugin.ServiceStateStarting)
 
 	secrets := nmplugin.ConnectionSettings{
@@ -171,6 +167,35 @@ func TestStaleSetupKeyNewSecretsDoesNotCompleteActivation(t *testing.T) {
 	defer fake.mu.Unlock()
 	require.Len(t, fake.loginRequests, 1)
 	require.Equal(t, "fresh-secret", fake.loginRequests[0].SetupKey)
+}
+
+func TestSetupKeyNewSecretsWithoutActivationIDUsesCurrentPrompt(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	waitForSignal(t, signals, "SecretsRequired")
+
+	secrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key": "secret-without-activation-id",
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, secrets).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, "secret-without-activation-id", fake.loginRequests[0].SetupKey)
 }
 
 func TestSetFailureCancelsPendingSetupKeyPrompt(t *testing.T) {
@@ -813,6 +838,19 @@ func nativeIPv4(t *testing.T, value string) uint32 {
 func assertState(t *testing.T, obj dbus.BusObject, want nmplugin.ServiceState) {
 	t.Helper()
 	require.Equal(t, want, currentState(t, obj))
+}
+
+func assertNoLoginRequestsUntil(t *testing.T, fake *fakeDaemonClient) {
+	t.Helper()
+
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		fake.mu.Lock()
+		loginRequests := len(fake.loginRequests)
+		fake.mu.Unlock()
+		require.Zero(t, loginRequests)
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func waitForState(t *testing.T, obj dbus.BusObject, want nmplugin.ServiceState) {

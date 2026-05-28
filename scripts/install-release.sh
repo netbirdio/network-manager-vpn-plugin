@@ -97,7 +97,7 @@ install_config_noreplace() {
 }
 
 install_vpn_metadata() {
-  tmp=${TMPDIR:-/tmp}/nm-netbird-service.name.$$
+  tmp=$(mktemp "${TMPDIR:-/tmp}/nm-netbird-service.name.XXXXXX")
   awk -v plugin="$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird.so" '
     /^plugin=/ { print "plugin=" plugin; next }
     { print }
@@ -122,8 +122,7 @@ build_properties_plugin() {
     return 1
   fi
 
-  PROPERTIES_BUILD_DIR=${TMPDIR:-/tmp}/nm-netbird-properties.$$
-  mkdir -p "$PROPERTIES_BUILD_DIR"
+  PROPERTIES_BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nm-netbird-properties.XXXXXX")
   echo "building libnm-vpn-plugin-netbird.so from bundled source"
   cc -Wall -Wextra -fPIC -shared \
     -o "$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so" \

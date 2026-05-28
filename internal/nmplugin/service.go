@@ -202,11 +202,8 @@ func (s *Service) NewSecrets(connection ConnectionSettings) *dbus.Error {
 	}
 
 	if settings.PromptActivationID == "" {
-		s.lifecycleMu.Unlock()
-		s.logf("ignoring NewSecrets without NetBird activation id")
-		return nil
-	}
-	if settings.PromptActivationID != formatActivationID(prompt.activationID) {
+		s.logf("NewSecrets missing activation id; accepting for current in-flight prompt")
+	} else if settings.PromptActivationID != formatActivationID(prompt.activationID) {
 		s.lifecycleMu.Unlock()
 		s.logf("ignoring stale NewSecrets for activation %s", settings.PromptActivationID)
 		return nil

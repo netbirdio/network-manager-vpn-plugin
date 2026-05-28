@@ -29,6 +29,7 @@ tasks:
   build:go:
     desc: Build the Go service and auth-dialog binaries
     cmds:
+      - mkdir -p bin
       - go build -o {{.BIN}} ./cmd/nm-netbird-service
       - go build -o {{.AUTH_DIALOG_BIN}} ./cmd/nm-netbird-auth-dialog
 
