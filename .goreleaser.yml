@@ -49,10 +49,30 @@ archives:
     wrap_in_directory: true
     files:
       - README.md
+      - src: meson.build
+        dst: meson.build
+      - src: meson_options.txt
+        dst: meson_options.txt
       - src: scripts/install-release.sh
         dst: install.sh
       - src: scripts/uninstall-release.sh
         dst: uninstall.sh
+      - src: properties/meson.build
+        dst: properties/meson.build
+      - src: properties/nm-netbird-editor-model.c
+        dst: properties/nm-netbird-editor-model.c
+      - src: properties/nm-netbird-editor-model.h
+        dst: properties/nm-netbird-editor-model.h
+      - src: properties/nm-netbird-editor.c
+        dst: properties/nm-netbird-editor.c
+      - src: properties/nm-netbird-editor.h
+        dst: properties/nm-netbird-editor.h
+      - src: properties/nm-netbird-editor-plugin.c
+        dst: properties/nm-netbird-editor-plugin.c
+      - src: properties/nm-netbird-editor-model-test.c
+        dst: properties/nm-netbird-editor-model-test.c
+      - src: properties/nm-netbird-editor-plugin-test.c
+        dst: properties/nm-netbird-editor-plugin-test.c
       - src: packaging/NetworkManager/VPN/nm-netbird-service.name
         dst: packaging/NetworkManager/VPN/nm-netbird-service.name
       - src: packaging/dbus-1/system.d/nm-netbird-service.conf

@@ -14,6 +14,7 @@ if [ -d "$SCRIPT_DIR/../packaging" ]; then
 fi
 
 LIBEXEC_DIR=${LIBEXEC_DIR:-/usr/libexec}
+NM_PLUGIN_DIR=${NM_PLUGIN_DIR:-/usr/lib/NetworkManager}
 NM_VPN_DIR=${NM_VPN_DIR:-/usr/share/NetworkManager/VPN}
 DBUS_POLICY_DIR=${DBUS_POLICY_DIR:-/etc/dbus-1/system.d}
 NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
@@ -94,6 +95,7 @@ reload_networkmanager() {
 
 remove_file "$LIBEXEC_DIR/nm-netbird-service"
 remove_file "$LIBEXEC_DIR/nm-netbird-auth-dialog"
+remove_file "$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird.so"
 remove_file "$NM_VPN_DIR/nm-netbird-service.name"
 remove_file "$DBUS_POLICY_DIR/nm-netbird-service.conf"
 remove_config_if_matching "$NM_UNMANAGED_SRC" "$NM_CONF_DIR/90-netbird-unmanaged.conf"

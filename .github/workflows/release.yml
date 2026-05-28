@@ -49,14 +49,41 @@ jobs:
             ${{ runner.os }}-gotest-
             ${{ runner.os }}-go-
 
+      - name: Install C editor dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev
+
       - name: Install modules
         run: go mod tidy
 
       - name: Check git status
         run: git --no-pager diff --exit-code
 
-      - name: Run tests
+      - name: Run Go tests
         run: go test ./...
+
+      - name: Build properties editor
+        run: |
+          mkdir -p bin
+          cc -Wall -Wextra -fPIC -shared -o bin/libnm-vpn-plugin-netbird.so \
+            properties/nm-netbird-editor-model.c \
+            properties/nm-netbird-editor.c \
+            properties/nm-netbird-editor-plugin.c \
+            $(pkg-config --cflags --libs libnm gtk+-3.0)
+
+      - name: Run properties editor tests
+        run: |
+          mkdir -p bin
+          cc -Wall -Wextra -o bin/nm-netbird-editor-model-test \
+            properties/nm-netbird-editor-model.c \
+            properties/nm-netbird-editor-model-test.c \
+            $(pkg-config --cflags --libs libnm)
+          ./bin/nm-netbird-editor-model-test
+          cc -Wall -Wextra -o bin/nm-netbird-editor-plugin-test \
+            properties/nm-netbird-editor-plugin-test.c \
+            $(pkg-config --cflags --libs libnm)
+          NETBIRD_EDITOR_PLUGIN_PATH="$PWD/bin/libnm-vpn-plugin-netbird.so" ./bin/nm-netbird-editor-plugin-test
 
       - name: Run race tests
         run: go test -race ./...

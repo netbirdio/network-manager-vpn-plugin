@@ -11,6 +11,7 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 - NetBird daemon gRPC socket available, by default:
   - `unix:///var/run/netbird.sock`
 - NetworkManager VPN service metadata installed for VPN type `netbird` (packaging target)
+- For the desktop properties editor: libnm, GTK 3, a C compiler, and `pkg-config` build dependencies
 
 For development you can run the service directly on the session bus and use the `Taskfile.yml` D-Bus smoke tasks.
 
@@ -41,12 +42,13 @@ cd nm-netbird-service_linux_amd64
 sudo ./install.sh
 ```
 
-The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts.
+The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. If the tarball does not include a prebuilt properties editor plugin, `install.sh` builds it from bundled C sources and requires `cc`, `pkg-config`, libnm development headers, and GTK 3 development headers.
 
 Package/manual installs provide:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
 - the `nm-netbird-auth-dialog` helper in the runtime libexec directory
+- the `libnm-vpn-plugin-netbird.so` desktop properties editor plugin in the NetworkManager plugin directory
 - NetworkManager VPN metadata for VPN type `netbird`
 - D-Bus system policy for `org.freedesktop.NetworkManager.netbird`
 - NetworkManager unmanaged-interface config for NetBird-owned interfaces
@@ -56,9 +58,17 @@ Release artifacts are produced by GoReleaser (`.goreleaser.yml`) and published b
 ## Build
 
 ```bash
+task build
+```
+
+The Go binaries can still be built directly:
+
+```bash
 go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
 go build -o bin/nm-netbird-auth-dialog ./cmd/nm-netbird-auth-dialog
 ```
+
+The desktop properties editor is a small libnm/GTK shared library. For local development `task build:properties` builds `bin/libnm-vpn-plugin-netbird.so` and `task test:properties` runs the settings mapping tests; distro builds may also use the Meson files under `properties/`.
 
 ## Running the service
 
@@ -184,6 +194,18 @@ nmcli connection up netbird-sso --ask
 ```
 
 Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dialog` helper. The helper can request a missing setup key and show NetBird SSO verification URL/user-code hints. Browser-opening/progress controls depend on the frontend; the service never opens UI or browser windows.
+
+## Desktop profile editor
+
+The packaged libnm editor plugin lets desktop NetworkManager frontends such as GNOME Settings or `nm-connection-editor` create and edit NetBird VPN profiles.
+
+The editor writes the same `vpn.data` and `vpn.secrets` keys used by `nmcli`:
+
+- setup keys and pre-shared keys are saved in `vpn.secrets`
+- management/admin URLs, profile name, username, interface name, hostname, auth mode, and SSO login hint are saved in `vpn.data`
+- unknown existing NetBird data/secrets are preserved when saving
+
+The editor validates only local field syntax. It does not contact the NetBird daemon while editing.
 
 ## VPN data/secrets keys
 

@@ -9,3 +9,6 @@ supports-multiple-connections=false
 auth-dialog=/usr/libexec/nm-netbird-auth-dialog
 supports-external-ui-mode=true
 supports-hints=true
+
+[libnm]
+plugin=/usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
