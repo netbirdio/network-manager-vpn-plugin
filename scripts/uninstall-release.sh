@@ -14,7 +14,7 @@ if [ -d "$SCRIPT_DIR/../packaging" ]; then
 fi
 
 LIBEXEC_DIR=${LIBEXEC_DIR:-/usr/libexec}
-NM_VPN_DIR=${NM_VPN_DIR:-/usr/share/NetworkManager/VPN}
+NM_VPN_DIR=${NM_VPN_DIR:-/etc/NetworkManager/VPN}
 DBUS_POLICY_DIR=${DBUS_POLICY_DIR:-/etc/dbus-1/system.d}
 NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
 NM_UNMANAGED_SRC=${NM_UNMANAGED_SRC:-$SOURCE_ROOT/packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf}

@@ -3,6 +3,7 @@ package nmplugin
 import (
 	"fmt"
 	"os"
+	osuser "os/user"
 	"strconv"
 	"strings"
 
@@ -31,10 +32,15 @@ func parseActivationSettings(settings ConnectionSettings) activationSettings {
 		profileName = networkManagerConnectionProfileName(settings)
 	}
 
+	username := firstSetting(values, "netbird-username", "username", "user-name", "user")
+	if username == "" && profileName != "" {
+		username = networkManagerConnectionPermissionUsername(settings)
+	}
+
 	return activationSettings{
 		Profile: daemonclient.ProfileRef{
 			ProfileName: profileName,
-			Username:    firstSetting(values, "netbird-username", "username", "user-name", "user"),
+			Username:    username,
 		},
 		SetupKey:      firstSetting(values, "setup-key", "setupKey", "netbird-setup-key"),
 		ManagementURL: firstSetting(values, "management-url", "managementUrl", "netbird-management-url"),
@@ -164,6 +170,84 @@ func networkManagerConnectionProfileName(settings ConnectionSettings) string {
 		return "nm-" + id
 	}
 	return ""
+}
+
+func networkManagerConnectionPermissionUsername(settings ConnectionSettings) string {
+	users := map[string]struct{}{}
+	for section, sectionValues := range settings {
+		if normalizeSectionName(section) != "connection" {
+			continue
+		}
+		for key, variant := range sectionValues {
+			if normalizeSettingKey(key) != "permissions" {
+				continue
+			}
+			for _, username := range permissionUsers(variant) {
+				users[username] = struct{}{}
+			}
+		}
+	}
+	if len(users) != 1 {
+		return ""
+	}
+	for username := range users {
+		return username
+	}
+	return ""
+}
+
+func permissionUsers(variant dbus.Variant) []string {
+	switch typed := variant.Value().(type) {
+	case []string:
+		return permissionUsersFromStrings(typed)
+	case []dbus.Variant:
+		permissions := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value, ok := variantToString(item); ok {
+				permissions = append(permissions, value)
+			}
+		}
+		return permissionUsersFromStrings(permissions)
+	case []interface{}:
+		permissions := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value, ok := anyToString(item); ok {
+				permissions = append(permissions, value)
+			}
+		}
+		return permissionUsersFromStrings(permissions)
+	case string:
+		return permissionUsersFromStrings([]string{typed})
+	default:
+		return nil
+	}
+}
+
+func permissionUsersFromStrings(permissions []string) []string {
+	users := make([]string, 0, len(permissions))
+	for _, permission := range permissions {
+		permission = strings.TrimSpace(permission)
+		if !strings.HasPrefix(permission, "user:") {
+			continue
+		}
+		username := strings.TrimPrefix(permission, "user:")
+		if before, _, ok := strings.Cut(username, ":"); ok {
+			username = before
+		}
+		username = strings.TrimSpace(username)
+		if username != "" {
+			users = append(users, username)
+		}
+	}
+	return users
+}
+
+func currentProcessUsername() string {
+	current, err := osuser.Current()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(current.Username)
 }
 
 func firstConnectionSetting(settings ConnectionSettings, keys ...string) string {

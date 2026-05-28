@@ -49,7 +49,7 @@ func PrepareActivation(ctx context.Context, client Client, desired daemonclient.
 	if err := checkRunningConflict(ctx, client, active, desired); err != nil {
 		return daemonclient.ProfileRef{}, err
 	}
-	return desired, nil
+	return fillMissingProfileFields(active, desired), nil
 }
 
 // Resolve maps a NetworkManager activation to a daemon profile. When daemon
