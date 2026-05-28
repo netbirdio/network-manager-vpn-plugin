@@ -175,7 +175,7 @@ netbird login
 nmcli connection up netbird
 ```
 
-Interactive SSO for the current MVP is exposed through NetworkManager's interactive VPN flow in `nmcli --ask`. The service emits the verification URL/user code as a login banner and waits for daemon `WaitSSOLogin` completion using the longer SSO wait timeout.
+Interactive SSO is exposed through NetworkManager's interactive VPN flow in `nmcli --ask`. The service emits the verification URL/user code as a login banner and waits for daemon `WaitSSOLogin` completion using the longer SSO wait timeout.
 
 ```bash
 nmcli connection add type vpn con-name netbird-sso vpn-type netbird ifname --
@@ -183,7 +183,7 @@ nmcli connection modify netbird-sso +vpn.data "auth=sso,hint=alice@example.com"
 nmcli connection up netbird-sso --ask
 ```
 
-Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dialog` helper. Full desktop SSO browser/progress UX is still limited; for SSO, log in with `netbird login` first or use the `nmcli --ask` flow above.
+Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dialog` helper. The helper can request a missing setup key and show NetBird SSO verification URL/user-code hints. Browser-opening/progress controls depend on the frontend; the service never opens UI or browser windows.
 
 ## VPN data/secrets keys
 

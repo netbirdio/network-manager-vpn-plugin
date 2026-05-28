@@ -76,6 +76,161 @@ func TestNeedSecretsForSetupKeyProfile(t *testing.T) {
 	require.Equal(t, "vpn", settingName)
 }
 
+func TestConnectFailsWhenSetupKeyMissingNonInteractive(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.loginRequests)
+	require.Empty(t, fake.upRequests)
+}
+
+func TestConnectInteractiveWaitsForSetupKeyNewSecrets(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	activationID := activationIDFromSecretsRequired(t, waitForSignal(t, signals, "SecretsRequired"))
+
+	secrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key":               "secret-from-dialog",
+				"x-netbird-activation-id": activationID,
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, secrets).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, "secret-from-dialog", fake.loginRequests[0].SetupKey)
+}
+
+func TestStaleSetupKeyNewSecretsDoesNotCompleteActivation(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	activationID := activationIDFromSecretsRequired(t, waitForSignal(t, signals, "SecretsRequired"))
+
+	staleSecrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key":               "stale-secret",
+				"x-netbird-activation-id": "999999",
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, staleSecrets).Store())
+	time.Sleep(100 * time.Millisecond)
+
+	fake.mu.Lock()
+	require.Empty(t, fake.loginRequests)
+	fake.mu.Unlock()
+	assertState(t, obj, nmplugin.ServiceStateStarting)
+
+	secrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key":               "fresh-secret",
+				"x-netbird-activation-id": activationID,
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, secrets).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, "fresh-secret", fake.loginRequests[0].SetupKey)
+}
+
+func TestSetFailureCancelsPendingSetupKeyPrompt(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	activationID := activationIDFromSecretsRequired(t, waitForSignal(t, signals, "SecretsRequired"))
+	require.NoError(t, obj.Call(nmplugin.Interface+".SetFailure", 0, "user canceled").Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	lateSecrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key":               "too-late",
+				"x-netbird-activation-id": activationID,
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, lateSecrets).Store())
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.loginRequests)
+}
+
+func TestSetupKeyPromptTimeoutClearsPendingNewSecrets(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
+		options.ActivationTimeout = 50 * time.Millisecond
+	})
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	activationID := activationIDFromSecretsRequired(t, waitForSignal(t, signals, "SecretsRequired"))
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	lateSecrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key":               "too-late",
+				"x-netbird-activation-id": activationID,
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, lateSecrets).Store())
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.loginRequests)
+}
+
 func TestConnectUsesSetupKeyLogin(t *testing.T) {
 	obj, fake := newTestingBusObject(t)
 
@@ -238,6 +393,119 @@ func TestConnectWithSSOAuthEmitsActionableMessage(t *testing.T) {
 			t.Fatal("timed out waiting for LoginBanner signal")
 		}
 	}
+}
+
+func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "LoginBanner", "SecretsRequired")
+
+	waitStarted := make(chan struct{})
+	waitRelease := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseWait := func() {
+		releaseOnce.Do(func() { close(waitRelease) })
+	}
+	t.Cleanup(releaseWait)
+
+	fake.mu.Lock()
+	fake.loginResponse = daemonclient.LoginResponse{
+		NeedsSSOLogin:           true,
+		UserCode:                "ABCD-EFGH",
+		VerificationURI:         "https://login.netbird.io/device",
+		VerificationURIComplete: "https://login.netbird.io/device?user_code=ABCD-EFGH",
+	}
+	fake.waitSSOStarted = waitStarted
+	fake.waitSSORelease = waitRelease
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "sso", "hint": "alice@example.com"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+
+	var sawBanner bool
+	var sawPrompt bool
+	for !sawBanner || !sawPrompt {
+		signal := waitForSignal(t, signals, "LoginBanner", "SecretsRequired")
+		switch signal.Name {
+		case nmplugin.Interface + ".LoginBanner":
+			require.Len(t, signal.Body, 1)
+			banner, ok := signal.Body[0].(string)
+			require.True(t, ok, "LoginBanner body type = %T", signal.Body[0])
+			require.Contains(t, banner, "https://login.netbird.io/device?user_code=ABCD-EFGH")
+			require.Contains(t, banner, "ABCD-EFGH")
+			sawBanner = true
+		case nmplugin.Interface + ".SecretsRequired":
+			hints := secretsRequiredHints(t, signal)
+			require.Contains(t, hints, "x-netbird-sso=true")
+			require.Contains(t, hints, "x-netbird-sso-verification-uri=https://login.netbird.io/device")
+			require.Contains(t, hints, "x-netbird-sso-verification-uri-complete=https://login.netbird.io/device?user_code=ABCD-EFGH")
+			require.Contains(t, hints, "x-netbird-sso-user-code=ABCD-EFGH")
+			require.Contains(t, hints, "x-netbird-sso-hint=alice@example.com")
+			require.NotEmpty(t, activationIDFromHints(t, hints))
+			sawPrompt = true
+		}
+	}
+
+	select {
+	case <-waitStarted:
+	case <-time.After(time.Second):
+		t.Fatal("SSO wait did not start")
+	}
+	releaseWait()
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+}
+
+func TestConnectInteractiveSSOCancelStopsActivation(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+	signals := watchSignals(t, clientConn, "SecretsRequired")
+
+	waitStarted := make(chan struct{})
+	waitRelease := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseWait := func() {
+		releaseOnce.Do(func() { close(waitRelease) })
+	}
+	t.Cleanup(releaseWait)
+
+	fake.mu.Lock()
+	fake.loginResponse = daemonclient.LoginResponse{NeedsSSOLogin: true, UserCode: "ABCD-EFGH"}
+	fake.waitSSOStarted = waitStarted
+	fake.waitSSORelease = waitRelease
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "sso"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	activationID := activationIDFromSecretsRequired(t, waitForSignal(t, signals, "SecretsRequired"))
+
+	select {
+	case <-waitStarted:
+	case <-time.After(time.Second):
+		t.Fatal("SSO wait did not start")
+	}
+
+	cancelSecrets := nmplugin.ConnectionSettings{
+		"vpn": {
+			"secrets": dbus.MakeVariant(map[string]string{
+				"x-netbird-activation-id": activationID,
+				"x-netbird-sso-cancel":    "true",
+			}),
+		},
+	}
+	require.NoError(t, obj.Call(nmplugin.Interface+".NewSecrets", 0, cancelSecrets).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.upRequests)
 }
 
 func TestConnectInteractiveRetriesWithSSOWhenDaemonRequiresAuthentication(t *testing.T) {
@@ -451,6 +719,69 @@ func currentState(t *testing.T, obj dbus.BusObject) nmplugin.ServiceState {
 	got, ok := stateVariant.Value().(uint32)
 	require.True(t, ok, "State property type = %T, want uint32", stateVariant.Value())
 	return nmplugin.ServiceState(got)
+}
+
+func watchSignals(t *testing.T, conn *dbus.Conn, members ...string) chan *dbus.Signal {
+	t.Helper()
+
+	signals := make(chan *dbus.Signal, 20)
+	conn.Signal(signals)
+	t.Cleanup(func() { conn.RemoveSignal(signals) })
+
+	for _, member := range members {
+		match := fmt.Sprintf("type='signal',interface='%s',member='%s',path='%s'", nmplugin.Interface, member, nmplugin.ObjectPath)
+		require.NoError(t, conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, match).Err)
+	}
+	return signals
+}
+
+func waitForSignal(t *testing.T, signals <-chan *dbus.Signal, members ...string) *dbus.Signal {
+	t.Helper()
+
+	want := map[string]bool{}
+	for _, member := range members {
+		want[nmplugin.Interface+"."+member] = true
+	}
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case signal := <-signals:
+			if want[signal.Name] {
+				return signal
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for signals %v", members)
+		}
+	}
+}
+
+func activationIDFromSecretsRequired(t *testing.T, signal *dbus.Signal) string {
+	t.Helper()
+	return activationIDFromHints(t, secretsRequiredHints(t, signal))
+}
+
+func activationIDFromHints(t *testing.T, hints []string) string {
+	t.Helper()
+
+	for _, hint := range hints {
+		key, value, ok := strings.Cut(hint, "=")
+		if ok && key == "x-netbird-activation-id" {
+			return value
+		}
+	}
+	t.Fatalf("SecretsRequired hints do not contain x-netbird-activation-id: %#v", hints)
+	return ""
+}
+
+func secretsRequiredHints(t *testing.T, signal *dbus.Signal) []string {
+	t.Helper()
+
+	require.Equal(t, nmplugin.Interface+".SecretsRequired", signal.Name)
+	require.Len(t, signal.Body, 2)
+	hints, ok := signal.Body[1].([]string)
+	require.True(t, ok, "SecretsRequired hints type = %T", signal.Body[1])
+	return hints
 }
 
 func hasInterface(node *introspect.Node, name string) bool {

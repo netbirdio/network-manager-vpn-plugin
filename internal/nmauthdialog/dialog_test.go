@@ -145,6 +145,80 @@ func TestRunFixtures(t *testing.T) {
 	}
 }
 
+func TestRunIncludesActivationIDForDynamicSetupKeyPrompt(t *testing.T) {
+	args := append(baseArgs(),
+		"--allow-interaction",
+		"--external-ui-mode",
+		"--hint", "setup-key",
+		"--hint", "x-netbird-activation-id=42",
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run(args, strings.NewReader("DATA_KEY=auth\nDATA_VAL=setup-key\nDONE\n"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"[setup-key]\n",
+		"ShouldAsk=true\n",
+		"[x-netbird-activation-id]\n",
+		"Value=42\n",
+		"ShouldAsk=false\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout does not contain %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
+	args := append(baseArgs(),
+		"--allow-interaction",
+		"--external-ui-mode",
+		"--hint", "x-netbird-sso=true",
+		"--hint", "x-netbird-sso-verification-uri=https://login.netbird.io/device",
+		"--hint", "x-netbird-sso-verification-uri-complete=https://login.netbird.io/device?user_code=ABCD-EFGH",
+		"--hint", "x-netbird-sso-user-code=ABCD-EFGH",
+		"--hint", "x-netbird-sso-hint=alice@example.com",
+		"--hint", "x-netbird-activation-id=42",
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run(args, strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"Title=NetBird SSO login required\n",
+		"https://login.netbird.io/device?user_code=ABCD-EFGH",
+		"User code: ABCD-EFGH",
+		"Login hint: alice@example.com",
+		"[x-netbird-sso-continue]\n",
+		"Value=true\n",
+		"[x-netbird-activation-id]\n",
+		"Value=42\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout does not contain %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunRejectsSSOWhenInteractionDisallowed(t *testing.T) {
+	args := append(baseArgs(), "--hint", "x-netbird-sso=true")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run(args, strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunReturnsExistingSetupKey(t *testing.T) {
 	stdin := "DATA_KEY=auth\n" +
 		"DATA_VAL=setup-key\n" +
