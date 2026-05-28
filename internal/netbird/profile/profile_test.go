@@ -11,6 +11,13 @@ import (
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/profile"
 )
 
+func TestPrepareActivationFillsMissingUsernameFromActiveProfile(t *testing.T) {
+	client := fakeProfileClient{active: daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}}
+	got, err := profile.PrepareActivation(context.Background(), client, daemonclient.ProfileRef{ProfileName: "prod"})
+	require.NoError(t, err)
+	require.Equal(t, daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}, got)
+}
+
 func TestResolveProfilesDisabled(t *testing.T) {
 	client := fakeProfileClient{features: daemonclient.Features{DisableProfiles: true}}
 	got, err := profile.Resolve(context.Background(), client, daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"})

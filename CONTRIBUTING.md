@@ -159,7 +159,7 @@ Profile flow:
 ```bash
 nmcli connection add type vpn con-name netbird-prod vpn-type netbird ifname --
 nmcli connection modify netbird-prod \
-  +vpn.data "profile-name=prod,username=alice@example.com"
+  +vpn.data "profile-name=prod,username=alice"
 nmcli connection up netbird-prod
 ```
 

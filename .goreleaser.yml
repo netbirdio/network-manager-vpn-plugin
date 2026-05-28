@@ -98,7 +98,7 @@ nfpms:
       - rpm
     contents:
       - src: packaging/NetworkManager/VPN/nm-netbird-service.name
-        dst: /usr/share/NetworkManager/VPN/nm-netbird-service.name
+        dst: /etc/NetworkManager/VPN/nm-netbird-service.name
       - src: packaging/dbus-1/system.d/nm-netbird-service.conf
         dst: /usr/share/dbus-1/system.d/nm-netbird-service.conf
       - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf

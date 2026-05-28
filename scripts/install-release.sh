@@ -15,7 +15,7 @@ fi
 
 LIBEXEC_DIR=${LIBEXEC_DIR:-/usr/libexec}
 NM_PLUGIN_DIR=${NM_PLUGIN_DIR:-/usr/lib/NetworkManager}
-NM_VPN_DIR=${NM_VPN_DIR:-/usr/share/NetworkManager/VPN}
+NM_VPN_DIR=${NM_VPN_DIR:-/etc/NetworkManager/VPN}
 DBUS_POLICY_DIR=${DBUS_POLICY_DIR:-/etc/dbus-1/system.d}
 NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
 PROPERTIES_BUILD_DIR=

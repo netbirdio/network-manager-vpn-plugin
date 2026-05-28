@@ -42,16 +42,26 @@ cd nm-netbird-service_linux_amd64
 sudo ./install.sh
 ```
 
-The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. If the tarball does not include a prebuilt properties editor plugin, `install.sh` builds it from bundled C sources and requires `cc`, `pkg-config`, libnm development headers, and GTK 3 development headers.
+The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata. If the tarball does not include a prebuilt properties editor plugin, `install.sh` builds it from bundled C sources and requires `cc`, `pkg-config`, libnm development headers, and GTK 3 development headers.
 
 Package/manual installs provide:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
 - the `nm-netbird-auth-dialog` helper in the runtime libexec directory
 - the `libnm-vpn-plugin-netbird.so` desktop properties editor plugin in the NetworkManager plugin directory
-- NetworkManager VPN metadata for VPN type `netbird`
+- NetworkManager VPN metadata for VPN type `netbird` in NetworkManager's VPN service directory
 - D-Bus system policy for `org.freedesktop.NetworkManager.netbird`
 - NetworkManager unmanaged-interface config for NetBird-owned interfaces
+
+### System D-Bus security model
+
+Installed system-bus policy only allows root-owned system components to own or send directly to `org.freedesktop.NetworkManager.netbird`. Normal users should not call the VPN plugin service directly.
+
+Users interact with NetworkManager through `nmcli` or desktop frontends, NetworkManager applies PolicyKit and connection permission checks, NetworkManager talks to the NetBird VPN plugin, and the plugin talks to the local NetBird daemon.
+
+This does not change session-bus development workflows (`--bus=session`) or NetBird daemon socket permissions. Direct system-bus debugging calls to `org.freedesktop.NetworkManager.netbird` should be run as root.
+
+Distribution packages usually handle D-Bus policy reloads or service restarts. For manual installs, after changing the system policy file, reload/restart D-Bus and NetworkManager as appropriate for the distro. If system-bus restart is not supported safely, reboot before verifying the policy.
 
 Release artifacts are produced by GoReleaser (`.goreleaser.yml`) and published by `.github/workflows/release.yml` when pushing `v*` tags.
 
@@ -147,7 +157,7 @@ nmcli connection down netbird
 
 ### Setup-key login
 
-For non-interactive first activation with a setup key:
+For non-interactive first activation with a setup key. If `username` is omitted, the plugin derives the NetBird daemon profile owner from NetworkManager connection permissions when available, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`; set `username` explicitly if you need another owner.
 
 ```bash
 nmcli connection add type vpn con-name netbird-setup vpn-type netbird ifname --
@@ -163,7 +173,7 @@ nmcli connection up netbird-setup
 
 ### Profile selection
 
-By default, every NetworkManager connection gets a separate NetBird profile named `nm-<connection UUID>` (falling back to a sanitized connection ID only if NetworkManager did not provide a UUID). You can override that mapping with `profile-name` and optional `username`.
+By default, every NetworkManager connection gets a separate NetBird profile named `nm-<connection UUID>` (falling back to a sanitized connection ID only if NetworkManager did not provide a UUID). The profile owner username is inferred from NetworkManager connection permissions when possible, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`. You can override the mapping with `profile-name` and optional `username`.
 
 NetBird still supports one active daemon engine. If a different profile is connected or connecting, the plugin fails safely instead of switching the active session. Switching between different NetworkManager-backed profiles is allowed once the daemon is disconnected.
 
@@ -171,7 +181,7 @@ NetBird still supports one active daemon engine. If a different profile is conne
 nmcli connection add type vpn con-name netbird-prod vpn-type netbird ifname --
 
 nmcli connection modify netbird-prod \
-  +vpn.data "profile-name=prod,username=alice@example.com"
+  +vpn.data "profile-name=prod,username=alice"
 
 nmcli connection up netbird-prod
 ```
@@ -218,7 +228,7 @@ The plugin reads keys from NetworkManager `vpn.data` and `vpn.secrets`. Store se
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login |
 | `profile-name` | `profileName`, `profile`, `netbird-profile-name` | NetBird daemon profile name; defaults to `nm-<NetworkManager connection UUID>` |
-| `username` | `user-name`, `user`, `netbird-username` | NetBird profile username |
+| `username` | `user-name`, `user`, `netbird-username` | NetBird daemon profile owner username; inferred when omitted |
 | `hostname` | `host-name` | Hostname sent during daemon login |
 | `interface-name` | `interfaceName`, `netbird-interface-name` | Desired NetBird interface name |
 | `pre-shared-key` | `preshared-key`, `preSharedKey` | Optional WireGuard pre-shared key |

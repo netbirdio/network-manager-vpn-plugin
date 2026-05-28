@@ -3,10 +3,13 @@ package nmplugin_test
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
+	"net/netip"
 	"os/exec"
+	osuser "os/user"
 	"strings"
 	"sync"
 	"testing"
@@ -257,6 +260,67 @@ func TestConnectUsesSetupKeyLogin(t *testing.T) {
 	require.NotEmpty(t, fake.upRequests)
 	require.Equal(t, "prod", fake.upRequests[0].ProfileName)
 	require.Equal(t, "alice", fake.upRequests[0].Username)
+}
+
+func TestConnectUsesNetworkManagerConnectionPermissionAsProfileUsername(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"id":          dbus.MakeVariant("netbird-generated"),
+			"uuid":        dbus.MakeVariant("11111111-1111-1111-1111-111111111111"),
+			"permissions": dbus.MakeVariant([]string{"user:test:"}),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key", "profile-name": "prod"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, "prod", fake.loginRequests[0].Profile.ProfileName)
+	require.Equal(t, "test", fake.loginRequests[0].Profile.Username)
+	require.NotEmpty(t, fake.upRequests)
+	require.Equal(t, "prod", fake.upRequests[0].ProfileName)
+	require.Equal(t, "test", fake.upRequests[0].Username)
+}
+
+func TestConnectFallsBackToProcessUsernameForNamedProfile(t *testing.T) {
+	current, err := osuser.Current()
+	if err != nil || strings.TrimSpace(current.Username) == "" {
+		t.Skip("current process username is unavailable")
+	}
+	wantUsername := strings.TrimSpace(current.Username)
+
+	obj, fake := newTestingBusObject(t)
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"id":   dbus.MakeVariant("netbird-generated"),
+			"uuid": dbus.MakeVariant("11111111-1111-1111-1111-111111111111"),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key", "profile-name": "prod"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, "prod", fake.loginRequests[0].Profile.ProfileName)
+	require.Equal(t, wantUsername, fake.loginRequests[0].Profile.Username)
+	require.NotEmpty(t, fake.upRequests)
+	require.Equal(t, "prod", fake.upRequests[0].ProfileName)
+	require.Equal(t, wantUsername, fake.upRequests[0].Username)
 }
 
 func TestConnectUsesNetworkManagerConnectionUUIDAsProfile(t *testing.T) {
@@ -663,7 +727,10 @@ func TestConnectEmitsMinimalNetworkManagerConfig(t *testing.T) {
 
 	settings := nmplugin.ConnectionSettings{
 		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{"interface-name": "wt-test"}),
+			"data": dbus.MakeVariant(map[string]string{
+				"interface-name": "wt-test",
+				"management-url": "https://192.0.2.10",
+			}),
 		},
 	}
 
@@ -681,6 +748,48 @@ func TestConnectEmitsMinimalNetworkManagerConfig(t *testing.T) {
 			require.Equal(t, "wt-test", config["tundev"].Value())
 			require.Equal(t, false, config["has-ip4"].Value())
 			require.Equal(t, false, config["has-ip6"].Value())
+			gateway, ok := config["gateway"]
+			require.True(t, ok, "Config signal is missing NetworkManager gateway metadata")
+			require.Equal(t, nativeIPv4(t, "192.0.2.10"), gateway.Value())
+			return
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for Config signal")
+		}
+	}
+}
+
+func TestConnectUsesDaemonConfigForNetworkManagerMetadata(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithConn(t)
+
+	fake.mu.Lock()
+	fake.config = &daemonproto.GetConfigResponse{
+		ManagementUrl: "https://192.0.2.11",
+		InterfaceName: "wt-daemon",
+	}
+	fake.mu.Unlock()
+
+	signals := make(chan *dbus.Signal, 10)
+	clientConn.Signal(signals)
+	t.Cleanup(func() { clientConn.RemoveSignal(signals) })
+
+	match := fmt.Sprintf("type='signal',interface='%s',member='Config',path='%s'", nmplugin.Interface, nmplugin.ObjectPath)
+	require.NoError(t, clientConn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, match).Err)
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, nmplugin.ConnectionSettings{}).Store())
+
+	for {
+		select {
+		case signal := <-signals:
+			if signal.Name != nmplugin.Interface+".Config" {
+				continue
+			}
+			require.Len(t, signal.Body, 1)
+			config, ok := signal.Body[0].(map[string]dbus.Variant)
+			require.True(t, ok, "Config signal body type = %T", signal.Body[0])
+			require.Equal(t, "wt-daemon", config["tundev"].Value())
+			gateway, ok := config["gateway"]
+			require.True(t, ok, "Config signal is missing NetworkManager gateway metadata")
+			require.Equal(t, nativeIPv4(t, "192.0.2.11"), gateway.Value())
 			return
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for Config signal")
@@ -691,6 +800,15 @@ func TestConnectEmitsMinimalNetworkManagerConfig(t *testing.T) {
 // -----------------------------------------------------------------------------
 // ------ TESTING HELPERS ------------------------------------------------------
 // -----------------------------------------------------------------------------
+
+func nativeIPv4(t *testing.T, value string) uint32 {
+	t.Helper()
+
+	addr, err := netip.ParseAddr(value)
+	require.NoError(t, err)
+	bytes := addr.As4()
+	return binary.NativeEndian.Uint32(bytes[:])
+}
 
 func assertState(t *testing.T, obj dbus.BusObject, want nmplugin.ServiceState) {
 	t.Helper()
@@ -909,6 +1027,7 @@ type fakeDaemonClient struct {
 
 	loginResponse daemonclient.LoginResponse
 	status        *daemonproto.StatusResponse
+	config        *daemonproto.GetConfigResponse
 	features      daemonclient.Features
 	activeProfile daemonclient.ProfileRef
 	profiles      []daemonclient.Profile
@@ -928,6 +1047,7 @@ type fakeDaemonClient struct {
 func newFakeDaemonClient() *fakeDaemonClient {
 	return &fakeDaemonClient{
 		status: &daemonproto.StatusResponse{Status: "connected", DaemonVersion: "test"},
+		config: &daemonproto.GetConfigResponse{ManagementUrl: "https://192.0.2.10"},
 	}
 }
 
@@ -988,6 +1108,7 @@ func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.Profi
 	started := f.getConfigStarted
 	f.getConfigStarted = nil
 	release := f.getConfigRelease
+	config := f.config
 	f.mu.Unlock()
 
 	if started != nil {
@@ -1004,6 +1125,9 @@ func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.Profi
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}
+	}
+	if config != nil {
+		return config, nil
 	}
 	return &daemonproto.GetConfigResponse{}, nil
 }
