@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   BIN: bin/nm-netbird-service
+  AUTH_DIALOG_BIN: bin/nm-netbird-auth-dialog
   BUS_NAME: org.freedesktop.NetworkManager.netbird
   OBJECT_PATH: /org/freedesktop/NetworkManager/VPN/Plugin
   PLUGIN_IFACE: org.freedesktop.NetworkManager.VPN.Plugin
@@ -19,9 +20,10 @@ tasks:
       - go mod tidy
 
   build:
-    desc: Build the NetworkManager VPN plugin skeleton
+    desc: Build the NetworkManager VPN plugin binaries
     cmds:
       - go build -o {{.BIN}} ./cmd/nm-netbird-service
+      - go build -o {{.AUTH_DIALOG_BIN}} ./cmd/nm-netbird-auth-dialog
 
   test:
     desc: Run unit tests

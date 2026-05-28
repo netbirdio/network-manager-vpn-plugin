@@ -20,11 +20,29 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+  - id: nm-netbird-auth-dialog
+    main: ./cmd/nm-netbird-auth-dialog
+    binary: nm-netbird-auth-dialog
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - '7'
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
 
 archives:
   - id: nm-netbird-service
     ids:
       - nm-netbird-service
+      - nm-netbird-auth-dialog
     formats:
       - tar.gz
     name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
@@ -46,6 +64,7 @@ nfpms:
   - id: linux-packages
     ids:
       - nm-netbird-service
+      - nm-netbird-auth-dialog
     package_name: network-manager-netbird
     vendor: NetBird
     homepage: https://netbird.io

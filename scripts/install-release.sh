@@ -26,6 +26,14 @@ if [ ! -f "$SERVICE_SRC" ] && [ -f "$SOURCE_ROOT/bin/nm-netbird-service" ]; then
   SERVICE_SRC=$SOURCE_ROOT/bin/nm-netbird-service
 fi
 
+AUTH_DIALOG_SRC=${AUTH_DIALOG_SRC:-$SCRIPT_DIR/nm-netbird-auth-dialog}
+if [ ! -f "$AUTH_DIALOG_SRC" ] && [ -f "$SCRIPT_DIR/bin/nm-netbird-auth-dialog" ]; then
+  AUTH_DIALOG_SRC=$SCRIPT_DIR/bin/nm-netbird-auth-dialog
+fi
+if [ ! -f "$AUTH_DIALOG_SRC" ] && [ -f "$SOURCE_ROOT/bin/nm-netbird-auth-dialog" ]; then
+  AUTH_DIALOG_SRC=$SOURCE_ROOT/bin/nm-netbird-auth-dialog
+fi
+
 VPN_NAME_SRC=${VPN_NAME_SRC:-$SOURCE_ROOT/packaging/NetworkManager/VPN/nm-netbird-service.name}
 DBUS_POLICY_SRC=${DBUS_POLICY_SRC:-$SOURCE_ROOT/packaging/dbus-1/system.d/nm-netbird-service.conf}
 NM_UNMANAGED_SRC=${NM_UNMANAGED_SRC:-$SOURCE_ROOT/packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf}
@@ -117,11 +125,13 @@ reload_networkmanager() {
 }
 
 require_file "$SERVICE_SRC"
+require_file "$AUTH_DIALOG_SRC"
 require_file "$VPN_NAME_SRC"
 require_file "$DBUS_POLICY_SRC"
 require_file "$NM_UNMANAGED_SRC"
 
 install_file "$SERVICE_SRC" "$LIBEXEC_DIR/nm-netbird-service" 0755
+install_file "$AUTH_DIALOG_SRC" "$LIBEXEC_DIR/nm-netbird-auth-dialog" 0755
 install_file "$VPN_NAME_SRC" "$NM_VPN_DIR/nm-netbird-service.name" 0644
 install_file "$DBUS_POLICY_SRC" "$DBUS_POLICY_DIR/nm-netbird-service.conf" 0644
 install_config_noreplace "$NM_UNMANAGED_SRC" "$NM_CONF_DIR/90-netbird-unmanaged.conf" 0644

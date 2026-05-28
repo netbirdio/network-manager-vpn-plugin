@@ -4,3 +4,8 @@ service=org.freedesktop.NetworkManager.netbird
 # NetworkManager executes this path directly; nm-netbird-service defaults to the system bus.
 program=/usr/libexec/nm-netbird-service
 supports-multiple-connections=false
+
+[GNOME]
+auth-dialog=/usr/libexec/nm-netbird-auth-dialog
+supports-external-ui-mode=true
+supports-hints=true

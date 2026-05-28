@@ -46,6 +46,7 @@ The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus pat
 Package/manual installs provide:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
+- the `nm-netbird-auth-dialog` helper in the runtime libexec directory
 - NetworkManager VPN metadata for VPN type `netbird`
 - D-Bus system policy for `org.freedesktop.NetworkManager.netbird`
 - NetworkManager unmanaged-interface config for NetBird-owned interfaces
@@ -56,6 +57,7 @@ Release artifacts are produced by GoReleaser (`.goreleaser.yml`) and published b
 
 ```bash
 go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
+go build -o bin/nm-netbird-auth-dialog ./cmd/nm-netbird-auth-dialog
 ```
 
 ## Running the service
@@ -181,7 +183,7 @@ nmcli connection modify netbird-sso +vpn.data "auth=sso,hint=alice@example.com"
 nmcli connection up netbird-sso --ask
 ```
 
-Desktop NetworkManager auth-dialog support is not shipped yet. For desktop GUI use, log in with `netbird login` first, or use the `nmcli --ask` flow above.
+Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dialog` helper. Full desktop SSO browser/progress UX is still limited; for SSO, log in with `netbird login` first or use the `nmcli --ask` flow above.
 
 ## VPN data/secrets keys
 

@@ -93,6 +93,7 @@ reload_networkmanager() {
 }
 
 remove_file "$LIBEXEC_DIR/nm-netbird-service"
+remove_file "$LIBEXEC_DIR/nm-netbird-auth-dialog"
 remove_file "$NM_VPN_DIR/nm-netbird-service.name"
 remove_file "$DBUS_POLICY_DIR/nm-netbird-service.conf"
 remove_config_if_matching "$NM_UNMANAGED_SRC" "$NM_CONF_DIR/90-netbird-unmanaged.conf"
