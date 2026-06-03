@@ -2,6 +2,8 @@
 
 #include "nm-netbird-editor-model.h"
 
+#include <nma-vpn-password-dialog.h>
+
 struct _NetbirdEditor {
     GObject parent;
 
@@ -29,6 +31,69 @@ G_DEFINE_TYPE_EXTENDED(NetbirdEditor,
                        0,
                        G_IMPLEMENT_INTERFACE(NM_TYPE_VPN_EDITOR, netbird_editor_iface_init))
 
+static void
+set_widget_margin(GtkWidget *widget, int margin)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_widget_set_margin_top(widget, margin);
+    gtk_widget_set_margin_bottom(widget, margin);
+    gtk_widget_set_margin_start(widget, margin);
+    gtk_widget_set_margin_end(widget, margin);
+#else
+    gtk_container_set_border_width(GTK_CONTAINER(widget), margin);
+#endif
+}
+
+static void
+frame_set_child(GtkWidget *frame, GtkWidget *child)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_frame_set_child(GTK_FRAME(frame), child);
+#else
+    gtk_container_add(GTK_CONTAINER(frame), child);
+#endif
+}
+
+static GtkWidget *
+frame_child(GtkWidget *frame)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gtk_frame_get_child(GTK_FRAME(frame));
+#else
+    return gtk_bin_get_child(GTK_BIN(frame));
+#endif
+}
+
+static void
+box_append_child(GtkWidget *box, GtkWidget *child)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_box_append(GTK_BOX(box), child);
+#else
+    gtk_box_pack_start(GTK_BOX(box), child, FALSE, FALSE, 0);
+#endif
+}
+
+static void
+entry_set_text_value(GtkWidget *entry, const char *value)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    gtk_editable_set_text(GTK_EDITABLE(entry), value);
+#else
+    gtk_entry_set_text(GTK_ENTRY(entry), value);
+#endif
+}
+
+static const char *
+entry_text_value(GtkWidget *entry)
+{
+#if GTK_CHECK_VERSION(4, 0, 0)
+    return gtk_editable_get_text(GTK_EDITABLE(entry));
+#else
+    return gtk_entry_get_text(GTK_ENTRY(entry));
+#endif
+}
+
 static GtkWidget *
 new_section(const char *title)
 {
@@ -41,8 +106,8 @@ new_section(const char *title)
     grid = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 12);
-    gtk_container_set_border_width(GTK_CONTAINER(grid), 12);
-    gtk_container_add(GTK_CONTAINER(frame), grid);
+    set_widget_margin(grid, 12);
+    frame_set_child(frame, grid);
 
     return frame;
 }
@@ -50,7 +115,7 @@ new_section(const char *title)
 static GtkWidget *
 section_grid(GtkWidget *section)
 {
-    return gtk_bin_get_child(GTK_BIN(section));
+    return frame_child(section);
 }
 
 static GtkWidget *
@@ -119,13 +184,13 @@ connect_changed(NetbirdEditor *self, GtkWidget *widget)
 static void
 set_entry_text(GtkWidget *entry, const char *value)
 {
-    gtk_entry_set_text(GTK_ENTRY(entry), value ? value : "");
+    entry_set_text_value(entry, value ? value : "");
 }
 
 static char *
 entry_text(GtkWidget *entry)
 {
-    return g_strdup(gtk_entry_get_text(GTK_ENTRY(entry)));
+    return g_strdup(entry_text_value(entry));
 }
 
 static char *
@@ -211,7 +276,7 @@ build_main_section(NetbirdEditor *self)
     attach_row(grid, 3, "Profile name", self->profile_name_entry);
     attach_row(grid, 4, "Username", self->username_entry);
 
-    gtk_box_pack_start(GTK_BOX(self->widget), section, FALSE, FALSE, 0);
+    box_append_child(self->widget, section);
 }
 
 static void
@@ -227,7 +292,7 @@ build_setup_key_section(NetbirdEditor *self)
     gtk_entry_set_input_purpose(GTK_ENTRY(self->setup_key_entry), GTK_INPUT_PURPOSE_PASSWORD);
     attach_row(grid, 0, "Setup key", self->setup_key_entry);
 
-    gtk_box_pack_start(GTK_BOX(self->widget), self->setup_key_section, FALSE, FALSE, 0);
+    box_append_child(self->widget, self->setup_key_section);
 }
 
 static void
@@ -242,7 +307,7 @@ build_sso_section(NetbirdEditor *self)
     gtk_entry_set_placeholder_text(GTK_ENTRY(self->hint_entry), "alice@example.com");
     attach_row(grid, 0, "Login hint", self->hint_entry);
 
-    gtk_box_pack_start(GTK_BOX(self->widget), self->sso_section, FALSE, FALSE, 0);
+    box_append_child(self->widget, self->sso_section);
 }
 
 static void
@@ -265,7 +330,7 @@ build_advanced_section(NetbirdEditor *self)
     attach_row(grid, 1, "Hostname", self->hostname_entry);
     attach_row(grid, 2, "Pre-shared key", self->pre_shared_key_entry);
 
-    gtk_box_pack_start(GTK_BOX(self->widget), section, FALSE, FALSE, 0);
+    box_append_child(self->widget, section);
 }
 
 static void
@@ -287,7 +352,7 @@ static void
 netbird_editor_init(NetbirdEditor *self)
 {
     self->widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_container_set_border_width(GTK_CONTAINER(self->widget), 12);
+    set_widget_margin(self->widget, 12);
     g_object_ref_sink(self->widget);
 
     build_main_section(self);
@@ -356,4 +421,13 @@ netbird_editor_new(NMConnection *connection, GError **error)
     netbird_editor_values_clear(&values);
 
     return NM_VPN_EDITOR(editor);
+}
+
+NMVpnEditor *
+nm_vpn_editor_factory_netbird(NMVpnEditorPlugin *editor_plugin, NMConnection *connection, GError **error)
+{
+    (void) editor_plugin;
+
+    g_type_ensure(NMA_VPN_TYPE_PASSWORD_DIALOG);
+    return netbird_editor_new(connection, error);
 }

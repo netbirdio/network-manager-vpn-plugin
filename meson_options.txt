@@ -2,3 +2,8 @@ option('nm_plugin_dir',
   type: 'string',
   value: '/usr/lib/NetworkManager',
   description: 'Directory for libnm VPN editor plugins')
+
+option('gtk4',
+  type: 'boolean',
+  value: false,
+  description: 'Build the GTK 4 libnma VPN editor plugin')

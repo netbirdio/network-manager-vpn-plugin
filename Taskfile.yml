@@ -4,6 +4,8 @@ vars:
   BIN: bin/nm-netbird-service
   AUTH_DIALOG_BIN: bin/nm-netbird-auth-dialog
   PROPERTIES_PLUGIN: bin/libnm-vpn-plugin-netbird.so
+  PROPERTIES_GTK3_EDITOR: bin/libnm-vpn-plugin-netbird-editor.so
+  PROPERTIES_GTK4_EDITOR: bin/libnm-gtk4-vpn-plugin-netbird-editor.so
   PROPERTIES_MODEL_TEST: bin/nm-netbird-editor-model-test
   PROPERTIES_PLUGIN_TEST: bin/nm-netbird-editor-plugin-test
   BUS_NAME: org.freedesktop.NetworkManager.netbird
@@ -34,10 +36,17 @@ tasks:
       - go build -o {{.AUTH_DIALOG_BIN}} ./cmd/nm-netbird-auth-dialog
 
   build:properties:
-    desc: Build the libnm VPN properties editor plugin
+    desc: Build the libnm VPN properties editor plugin and GTK 3 editor
     cmds:
       - mkdir -p bin
-      - cc -Wall -Wextra -fPIC -shared -o {{.PROPERTIES_PLUGIN}} properties/nm-netbird-editor-model.c properties/nm-netbird-editor.c properties/nm-netbird-editor-plugin.c $(pkg-config --cflags --libs libnm gtk+-3.0)
+      - cc -Wall -Wextra -fPIC -shared -o {{.PROPERTIES_PLUGIN}} properties/nm-netbird-editor-plugin.c $(pkg-config --cflags --libs libnm) -ldl
+      - cc -Wall -Wextra -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_3_22 -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_3_22 -fPIC -shared -o {{.PROPERTIES_GTK3_EDITOR}} properties/nm-netbird-editor-model.c properties/nm-netbird-editor.c $(pkg-config --cflags --libs libnm gtk+-3.0 libnma)
+
+  build:properties:gtk4:
+    desc: Build the GTK 4 libnm VPN properties editor plugin
+    cmds:
+      - mkdir -p bin
+      - cc -Wall -Wextra -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0 -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_0 -fPIC -shared -o {{.PROPERTIES_GTK4_EDITOR}} properties/nm-netbird-editor-model.c properties/nm-netbird-editor.c $(pkg-config --cflags --libs libnm gtk4 libnma-gtk4)
 
   test:
     desc: Run unit tests

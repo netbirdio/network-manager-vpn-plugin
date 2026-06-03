@@ -18,6 +18,11 @@ NM_PLUGIN_DIR=${NM_PLUGIN_DIR:-/usr/lib/NetworkManager}
 NM_VPN_DIR=${NM_VPN_DIR:-/etc/NetworkManager/VPN}
 DBUS_POLICY_DIR=${DBUS_POLICY_DIR:-/etc/dbus-1/system.d}
 NM_CONF_DIR=${NM_CONF_DIR:-/etc/NetworkManager/conf.d}
+WITH_GTK4_SPECIFIED=${WITH_GTK4+x}
+WITH_GTK4=${WITH_GTK4:-no}
+if [ "$WITH_GTK4" != yes ]; then
+  WITH_GTK4=no
+fi
 PROPERTIES_BUILD_DIR=
 
 cleanup() {
@@ -49,6 +54,28 @@ if [ ! -f "$PROPERTIES_PLUGIN_SRC" ] && [ -f "$SCRIPT_DIR/bin/libnm-vpn-plugin-n
 fi
 if [ ! -f "$PROPERTIES_PLUGIN_SRC" ] && [ -f "$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird.so" ]; then
   PROPERTIES_PLUGIN_SRC=$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird.so
+fi
+
+PROPERTIES_GTK3_EDITOR_SRC=${PROPERTIES_GTK3_EDITOR_SRC:-$SCRIPT_DIR/libnm-vpn-plugin-netbird-editor.so}
+if [ ! -f "$PROPERTIES_GTK3_EDITOR_SRC" ] && [ -f "$SCRIPT_DIR/bin/libnm-vpn-plugin-netbird-editor.so" ]; then
+  PROPERTIES_GTK3_EDITOR_SRC=$SCRIPT_DIR/bin/libnm-vpn-plugin-netbird-editor.so
+fi
+if [ ! -f "$PROPERTIES_GTK3_EDITOR_SRC" ] && [ -f "$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird-editor.so" ]; then
+  PROPERTIES_GTK3_EDITOR_SRC=$SOURCE_ROOT/bin/libnm-vpn-plugin-netbird-editor.so
+fi
+
+PROPERTIES_GTK4_EDITOR_SRC=${PROPERTIES_GTK4_EDITOR_SRC:-}
+if [ -z "$PROPERTIES_GTK4_EDITOR_SRC" ] && [ -f "$SCRIPT_DIR/libnm-gtk4-vpn-plugin-netbird-editor.so" ]; then
+  PROPERTIES_GTK4_EDITOR_SRC=$SCRIPT_DIR/libnm-gtk4-vpn-plugin-netbird-editor.so
+fi
+if [ -z "$PROPERTIES_GTK4_EDITOR_SRC" ] && [ -f "$SCRIPT_DIR/bin/libnm-gtk4-vpn-plugin-netbird-editor.so" ]; then
+  PROPERTIES_GTK4_EDITOR_SRC=$SCRIPT_DIR/bin/libnm-gtk4-vpn-plugin-netbird-editor.so
+fi
+if [ -z "$PROPERTIES_GTK4_EDITOR_SRC" ] && [ -f "$SOURCE_ROOT/bin/libnm-gtk4-vpn-plugin-netbird-editor.so" ]; then
+  PROPERTIES_GTK4_EDITOR_SRC=$SOURCE_ROOT/bin/libnm-gtk4-vpn-plugin-netbird-editor.so
+fi
+if [ -z "$WITH_GTK4_SPECIFIED" ] && [ -n "$PROPERTIES_GTK4_EDITOR_SRC" ]; then
+  WITH_GTK4=yes
 fi
 
 VPN_NAME_SRC=${VPN_NAME_SRC:-$SOURCE_ROOT/packaging/NetworkManager/VPN/nm-netbird-service.name}
@@ -106,7 +133,7 @@ install_vpn_metadata() {
   rm -f "$tmp"
 }
 
-build_properties_plugin() {
+build_properties_plugins() {
   src_dir=$SOURCE_ROOT/properties
   if [ ! -f "$src_dir/nm-netbird-editor-model.c" ] || \
     [ ! -f "$src_dir/nm-netbird-editor.c" ] || \
@@ -118,19 +145,47 @@ build_properties_plugin() {
     return 1
   fi
 
-  if ! pkg-config --exists libnm gtk+-3.0; then
+  if ! pkg-config --exists libnm gtk+-3.0 libnma; then
+    return 1
+  fi
+
+  if [ "$WITH_GTK4" = yes ] && ! pkg-config --exists gtk4 libnma-gtk4; then
     return 1
   fi
 
   PROPERTIES_BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/nm-netbird-properties.XXXXXX")
+
   echo "building libnm-vpn-plugin-netbird.so from bundled source"
   cc -Wall -Wextra -fPIC -shared \
     -o "$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so" \
+    "$src_dir/nm-netbird-editor-plugin.c" \
+    $(pkg-config --cflags --libs libnm) \
+    -ldl
+  PROPERTIES_PLUGIN_SRC=$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so
+
+  echo "building libnm-vpn-plugin-netbird-editor.so from bundled source"
+  cc -Wall -Wextra \
+    -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_3_22 \
+    -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_3_22 \
+    -fPIC -shared \
+    -o "$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird-editor.so" \
     "$src_dir/nm-netbird-editor-model.c" \
     "$src_dir/nm-netbird-editor.c" \
-    "$src_dir/nm-netbird-editor-plugin.c" \
-    $(pkg-config --cflags --libs libnm gtk+-3.0)
-  PROPERTIES_PLUGIN_SRC=$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird.so
+    $(pkg-config --cflags --libs libnm gtk+-3.0 libnma)
+  PROPERTIES_GTK3_EDITOR_SRC=$PROPERTIES_BUILD_DIR/libnm-vpn-plugin-netbird-editor.so
+
+  if [ "$WITH_GTK4" = yes ]; then
+    echo "building libnm-gtk4-vpn-plugin-netbird-editor.so from bundled source"
+    cc -Wall -Wextra \
+      -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0 \
+      -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_0 \
+      -fPIC -shared \
+      -o "$PROPERTIES_BUILD_DIR/libnm-gtk4-vpn-plugin-netbird-editor.so" \
+      "$src_dir/nm-netbird-editor-model.c" \
+      "$src_dir/nm-netbird-editor.c" \
+      $(pkg-config --cflags --libs libnm gtk4 libnma-gtk4)
+    PROPERTIES_GTK4_EDITOR_SRC=$PROPERTIES_BUILD_DIR/libnm-gtk4-vpn-plugin-netbird-editor.so
+  fi
 }
 
 reload_dbus_policy() {
@@ -178,10 +233,14 @@ reload_networkmanager() {
   echo "warning: could not reload NetworkManager automatically; restart NetworkManager if vpn-type netbird is not visible" >&2
 }
 
-if [ ! -f "$PROPERTIES_PLUGIN_SRC" ]; then
-  if ! build_properties_plugin; then
-    echo "error: missing required file: $PROPERTIES_PLUGIN_SRC" >&2
-    echo "error: build bin/libnm-vpn-plugin-netbird.so first, or install C build dependencies: cc, pkg-config, libnm, and GTK 3" >&2
+if [ ! -f "$PROPERTIES_PLUGIN_SRC" ] || [ ! -f "$PROPERTIES_GTK3_EDITOR_SRC" ] || \
+  { [ "$WITH_GTK4" = yes ] && [ ! -f "$PROPERTIES_GTK4_EDITOR_SRC" ]; }; then
+  if ! build_properties_plugins; then
+    echo "error: missing required properties editor files" >&2
+    echo "error: build bin/libnm-vpn-plugin-netbird.so and bin/libnm-vpn-plugin-netbird-editor.so first, or install C build dependencies: cc, pkg-config, libnm, GTK 3, and libnma" >&2
+    if [ "$WITH_GTK4" = yes ]; then
+      echo "error: GTK 4 editor builds also require gtk4 and libnma-gtk4" >&2
+    fi
     exit 1
   fi
 fi
@@ -189,6 +248,10 @@ fi
 require_file "$SERVICE_SRC"
 require_file "$AUTH_DIALOG_SRC"
 require_file "$PROPERTIES_PLUGIN_SRC"
+require_file "$PROPERTIES_GTK3_EDITOR_SRC"
+if [ "$WITH_GTK4" = yes ]; then
+  require_file "$PROPERTIES_GTK4_EDITOR_SRC"
+fi
 require_file "$VPN_NAME_SRC"
 require_file "$DBUS_POLICY_SRC"
 require_file "$NM_UNMANAGED_SRC"
@@ -196,6 +259,10 @@ require_file "$NM_UNMANAGED_SRC"
 install_file "$SERVICE_SRC" "$LIBEXEC_DIR/nm-netbird-service" 0755
 install_file "$AUTH_DIALOG_SRC" "$LIBEXEC_DIR/nm-netbird-auth-dialog" 0755
 install_file "$PROPERTIES_PLUGIN_SRC" "$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird.so" 0755
+install_file "$PROPERTIES_GTK3_EDITOR_SRC" "$NM_PLUGIN_DIR/libnm-vpn-plugin-netbird-editor.so" 0755
+if [ "$WITH_GTK4" = yes ]; then
+  install_file "$PROPERTIES_GTK4_EDITOR_SRC" "$NM_PLUGIN_DIR/libnm-gtk4-vpn-plugin-netbird-editor.so" 0755
+fi
 install_vpn_metadata
 install_file "$DBUS_POLICY_SRC" "$DBUS_POLICY_DIR/nm-netbird-service.conf" 0644
 install_config_noreplace "$NM_UNMANAGED_SRC" "$NM_CONF_DIR/90-netbird-unmanaged.conf" 0644

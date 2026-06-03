@@ -52,7 +52,7 @@ jobs:
       - name: Install C editor dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
 
       - name: Install modules
         run: go mod tidy
@@ -67,10 +67,23 @@ jobs:
         run: |
           mkdir -p bin
           cc -Wall -Wextra -fPIC -shared -o bin/libnm-vpn-plugin-netbird.so \
+            properties/nm-netbird-editor-plugin.c \
+            $(pkg-config --cflags --libs libnm) \
+            -ldl
+          cc -Wall -Wextra \
+            -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_3_22 \
+            -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_3_22 \
+            -fPIC -shared -o bin/libnm-vpn-plugin-netbird-editor.so \
             properties/nm-netbird-editor-model.c \
             properties/nm-netbird-editor.c \
-            properties/nm-netbird-editor-plugin.c \
-            $(pkg-config --cflags --libs libnm gtk+-3.0)
+            $(pkg-config --cflags --libs libnm gtk+-3.0 libnma)
+          cc -Wall -Wextra \
+            -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0 \
+            -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_0 \
+            -fPIC -shared -o bin/libnm-gtk4-vpn-plugin-netbird-editor.so \
+            properties/nm-netbird-editor-model.c \
+            properties/nm-netbird-editor.c \
+            $(pkg-config --cflags --libs libnm gtk4 libnma-gtk4)
 
       - name: Run properties editor tests
         run: |

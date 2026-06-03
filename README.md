@@ -11,7 +11,7 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 - NetBird daemon gRPC socket available, by default:
   - `unix:///var/run/netbird.sock`
 - NetworkManager VPN service metadata installed for VPN type `netbird` (packaging target)
-- For the desktop properties editor: libnm, GTK 3, a C compiler, and `pkg-config` build dependencies
+- For the desktop properties editor: libnm, GTK 3, libnma, a C compiler, and `pkg-config` build dependencies; GTK 4 support additionally needs GTK 4 and libnma-gtk4
 
 For development you can run the service directly on the session bus and use the `Taskfile.yml` D-Bus smoke tasks.
 
@@ -78,7 +78,7 @@ go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
 go build -o bin/nm-netbird-auth-dialog ./cmd/nm-netbird-auth-dialog
 ```
 
-The desktop properties editor is a small libnm/GTK shared library. For local development `task build:properties` builds `bin/libnm-vpn-plugin-netbird.so` and `task test:properties` runs the settings mapping tests; distro builds may also use the Meson files under `properties/`.
+The desktop properties editor uses the common NetworkManager split-loader layout. For local development `task build:properties` builds the libnm loader and GTK 3 editor; `task build:properties:gtk4` builds the GTK 4 editor. `task test:properties` runs the settings mapping tests; distro builds may also use the Meson files under `properties/`.
 
 ## Running the service
 
