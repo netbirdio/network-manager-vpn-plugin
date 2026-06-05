@@ -11,30 +11,76 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 - NetBird daemon gRPC socket available, by default:
   - `unix:///var/run/netbird.sock`
 - NetworkManager VPN service metadata installed for VPN type `netbird` (packaging target)
-- For the desktop properties editor: libnm, GTK 3, libnma, a C compiler, and `pkg-config` build dependencies; GTK 4 support additionally needs GTK 4 and libnma-gtk4
+- For building the desktop properties editor from source: `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers
+- Optional GTK 4 editor builds additionally require GTK 4 and libnma-gtk4 development headers
 
 For development you can run the service directly on the session bus and use the `Taskfile.yml` D-Bus smoke tasks.
 
 ## Install
 
-The preferred distribution model is a distro package. This repository does not ship curl-to-shell installation automation.
+The preferred install path is the native package from the GitHub release. This repository does not ship curl-to-shell installation automation.
 
-Until a project package repository/PPA exists, GitHub releases provide native packages and a manual tarball.
-Install the NetBird daemon/runtime first if your package manager cannot resolve the local package dependency automatically.
+### Ubuntu/Debian quick start
 
-Debian/Ubuntu:
+1. Install NetworkManager and the NetBird daemon/runtime. If you already configured the NetBird apt repository, this is usually:
+
+   ```bash
+   sudo apt update
+   sudo apt install network-manager netbird
+   sudo systemctl enable --now NetworkManager netbird
+   ```
+
+2. Download the latest `network-manager-netbird_*.deb` from the repository's GitHub Releases page, then install it from the download directory:
+
+   ```bash
+   sudo apt install ./network-manager-netbird_*.deb
+   ```
+
+   The package installs the NetworkManager VPN service, D-Bus policy, auth-dialog helper, and unmanaged-interface config for NetBird interfaces. The post-install script reloads D-Bus policy and NetworkManager when possible.
+
+3. Verify that NetworkManager can see the VPN type:
+
+   ```bash
+   nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
+   nmcli connection show NetBird
+   ```
+
+4. Configure one authentication path, then activate the connection. For example, with a setup key:
+
+   ```bash
+   nmcli connection modify NetBird \
+     +vpn.data "auth=setup-key,management-url=https://api.netbird.io,admin-url=https://app.netbird.io"
+   nmcli connection modify NetBird \
+     +vpn.secrets "setup-key=YOUR_SETUP_KEY"
+   nmcli connection up NetBird
+   ```
+
+   For SSO, use the interactive flow instead:
+
+   ```bash
+   nmcli connection modify NetBird +vpn.data "auth=sso,hint=alice@example.com"
+   nmcli connection up NetBird --ask
+   ```
+
+If `vpn-type netbird` is not recognized after package install, restart NetworkManager and try again:
 
 ```bash
-sudo apt install ./network-manager-netbird*.deb
+sudo systemctl restart NetworkManager
 ```
 
-Fedora/RHEL-like distributions:
+### Fedora/RHEL-like distributions
+
+Download the latest `network-manager-netbird-*.rpm` from the GitHub release, then install it with dnf:
 
 ```bash
-sudo dnf install ./network-manager-netbird*.rpm
+sudo dnf install ./network-manager-netbird-*.rpm
 ```
 
-Manual tarball fallback:
+Then create and activate a NetworkManager connection as shown in the Ubuntu/Debian quick start.
+
+### Manual tarball fallback
+
+Use the tarball on distributions where the native package is not suitable:
 
 ```bash
 tar xf nm-netbird-service_linux_amd64.tar.gz
@@ -42,38 +88,31 @@ cd nm-netbird-service_linux_amd64
 sudo ./install.sh
 ```
 
-The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata. If the tarball does not include prebuilt properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources and requires `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers.
+The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata.
 
-When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To force GTK 4 editor installation explicitly, run:
+If the tarball does not include prebuilt desktop properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources when `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers are installed.
+
+GTK 4 editor support is optional. When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To require GTK 4 editor installation explicitly, run:
 
 ```bash
 sudo WITH_GTK4=yes ./install.sh
 ```
 
-Package/manual installs provide:
+### Installed files
+
+Native packages install:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
 - the `nm-netbird-auth-dialog` helper in the runtime libexec directory
-- the `libnm-vpn-plugin-netbird.so` desktop properties loader in the NetworkManager plugin directory
-- the `libnm-vpn-plugin-netbird-editor.so` GTK 3 editor module in the same directory
-- optionally, the `libnm-gtk4-vpn-plugin-netbird-editor.so` GTK 4 editor module in the same directory
 - NetworkManager VPN metadata for VPN type `netbird` in NetworkManager's VPN service directory
 - D-Bus system policy for `org.freedesktop.NetworkManager.netbird`
 - NetworkManager unmanaged-interface config for NetBird-owned interfaces
 
-To install only the properties editor modules from a source checkout:
+The tarball/source installer can additionally install desktop editor modules when they are prebuilt or when local C build dependencies are available:
 
-```bash
-task build:properties
-task build:properties:gtk4 # optional
-
-sudo install -Dm0755 bin/libnm-vpn-plugin-netbird.so \
-  /usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
-sudo install -Dm0755 bin/libnm-vpn-plugin-netbird-editor.so \
-  /usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so
-sudo install -Dm0755 bin/libnm-gtk4-vpn-plugin-netbird-editor.so \
-  /usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so
-```
+- the `libnm-vpn-plugin-netbird.so` desktop properties loader in the NetworkManager plugin directory
+- the `libnm-vpn-plugin-netbird-editor.so` GTK 3 editor module in the same directory
+- optionally, the `libnm-gtk4-vpn-plugin-netbird-editor.so` GTK 4 editor module in the same directory
 
 The `[libnm]` section in `/etc/NetworkManager/VPN/nm-netbird-service.name` should keep pointing at `/usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so`; that loader selects the GTK 3 or GTK 4 editor module at runtime.
 
@@ -222,7 +261,7 @@ Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dial
 
 ## Desktop profile editor
 
-The packaged libnm editor plugin lets desktop NetworkManager frontends such as GNOME Settings or `nm-connection-editor` create and edit NetBird VPN profiles.
+The packaged libnm editor plugin lets desktop NetworkManager frontends such as GNOME Settings or `nm-connection-editor` create and edit NetBird VPN profiles. The shared loader selects the GTK 3 or GTK 4 editor module at runtime based on the frontend.
 
 The editor writes the same `vpn.data` and `vpn.secrets` keys used by `nmcli`:
 
@@ -238,7 +277,7 @@ The plugin reads keys from NetworkManager `vpn.data` and `vpn.secrets`. Store se
 
 | Key | Aliases | Description |
 | --- | --- | --- |
-| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Values: `setup-key`, `sso`, `login`; omit to reuse daemon auth |
+| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Values: `setup-key` or `sso`; omit to use an existing daemon session. Legacy `login`/`reuse` values are accepted for compatibility but are not exposed by the editor |
 | `setup-key` | `setupKey`, `netbird-setup-key` | NetBird setup key secret |
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login |

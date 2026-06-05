@@ -13,11 +13,13 @@ Install these tools/packages on your Linux development machine:
 - `golangci-lint` and `opengrep` for the code-quality tasks
 - NetworkManager for end-to-end/manual system-bus testing
 - NetBird daemon/runtime for real daemon testing
+- C editor build dependencies for `task quality`: `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers
 
 Optional but useful:
 
 - a supported init system for daemon autostart testing (`systemd` currently)
 - `nmcli` for NetworkManager profile testing
+- GTK 4 and libnma-gtk4 development headers for optional GTK 4 editor builds
 
 ## Initial setup
 
@@ -25,7 +27,7 @@ Clone the repository and download Go modules:
 
 ```bash
 git clone <repo-url>
-cd network-manager-plugin
+cd network-manager-vpn-plugin
 go mod download
 ```
 
@@ -69,10 +71,16 @@ sudo ./bin/nm-netbird-service --bus=system --debug
 
 ## Testing
 
-Run all automated tests:
+Run Go tests:
 
 ```bash
 go test ./...
+```
+
+Run the standard local quality gate, including Go tests, C properties editor tests, lint, and repository pattern checks:
+
+```bash
+task quality
 ```
 
 The test suite includes:
@@ -189,24 +197,18 @@ If a test or profile uses a custom daemon `interfaceName` / VPN `interface-name`
 
 This repository values pragmatic, explicit, locally understandable Go.
 
-Run before submitting implementation changes:
-
-```bash
-task quality
-```
-
-For riskier changes, run:
-
-```bash
-task quality:full
-```
-
 ## Before submitting changes
 
 Run the standard quality gate:
 
 ```bash
 task quality
+```
+
+For riskier changes, run the full gate, including race tests:
+
+```bash
+task quality:full
 ```
 
 If your change affects D-Bus behavior, also run:
