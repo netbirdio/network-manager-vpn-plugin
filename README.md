@@ -11,18 +11,13 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 - NetBird daemon gRPC socket available, by default:
   - `unix:///var/run/netbird.sock`
 - NetworkManager VPN service metadata installed for VPN type `netbird` (packaging target)
-- For building the desktop properties editor from source: `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers
-- Optional GTK 4 editor builds additionally require GTK 4 and libnma-gtk4 development headers
-
-For development you can run the service directly on the session bus and use the `Taskfile.yml` D-Bus smoke tasks.
-
 ## Install
 
 The preferred install path is the native package from the GitHub release. This repository does not ship curl-to-shell installation automation.
 
 ### Ubuntu/Debian quick start
 
-1. Install NetworkManager, curl, and the NetBird daemon/runtime. If you already configured the NetBird apt repository, this is usually:
+1. Install NetworkManager, curl, and the NetBird daemon/runtime. Follow the [NetBird Ubuntu/Debian apt install guide](https://docs.netbird.io/get-started/install/linux#ubuntu-debian-apt) to configure the NetBird apt repository first. Once that repository is configured, this is usually:
 
    ```bash
    sudo apt update
@@ -30,19 +25,12 @@ The preferred install path is the native package from the GitHub release. This r
    sudo systemctl enable --now NetworkManager netbird
    ```
 
-2. Download the latest `.deb` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures. Set `RELEASE=snapshot` instead of `latest` if you want the continuously updated snapshot release:
+2. Download the latest `.deb` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures.
 
    ```bash
-   RELEASE=latest
-   ARCH=$(dpkg --print-architecture)
-   case "$ARCH" in
-     amd64) ASSET_ARCH=amd64 ;;
-     *) echo "native packages are currently published for amd64 only; use the tarball fallback on $ARCH" >&2; exit 1 ;;
-   esac
-   API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest"
-   [ "$RELEASE" = latest ] || API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/$RELEASE"
-   PACKAGE_URL=$(curl -fsSL "$API_URL" | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_'"${ASSET_ARCH}"'\.deb' | head -n1)
-   test -n "$PACKAGE_URL"
+   PACKAGE_URL=$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases \
+     | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_amd64\.deb' \
+     | head -n1)
    curl -fL "$PACKAGE_URL" -o network-manager-netbird.deb
    ```
 
@@ -54,60 +42,31 @@ The preferred install path is the native package from the GitHub release. This r
    sudo apt install ./network-manager-netbird.deb
    ```
 
-   The package installs the NetworkManager VPN service, D-Bus policy, auth-dialog helper, and unmanaged-interface config for NetBird interfaces. The post-install script reloads D-Bus policy and NetworkManager when possible.
+   The package installs the NetworkManager VPN service, D-Bus policy, auth-dialog helper, desktop editor modules, and unmanaged-interface config for NetBird interfaces. The post-install script reloads D-Bus policy and NetworkManager when possible.
 
-4. Verify that NetworkManager can see the VPN type:
-
-   ```bash
-   nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
-   nmcli connection show NetBird
-   ```
-
-5. Configure one authentication path, then activate the connection. For example, with a setup key:
-
-   ```bash
-   nmcli connection modify NetBird \
-     +vpn.data "auth=setup-key,management-url=https://api.netbird.io,admin-url=https://app.netbird.io"
-   nmcli connection modify NetBird \
-     +vpn.secrets "setup-key=YOUR_SETUP_KEY"
-   nmcli connection up NetBird
-   ```
-
-   For SSO, use the interactive flow instead:
-
-   ```bash
-   nmcli connection modify NetBird +vpn.data "auth=sso,hint=alice@example.com"
-   nmcli connection up NetBird --ask
-   ```
-
-If `vpn-type netbird` is not recognized after package install, restart NetworkManager and try again:
+If NetworkManager does not recognize `vpn-type netbird` after package install, restart NetworkManager and try again:
 
 ```bash
 sudo systemctl restart NetworkManager
 ```
 
+After installation, create a VPN profile with your desktop NetworkManager frontend or the examples in [nmcli usage](#nmcli-usage).
+
 ### Fedora/RHEL-like distributions
 
-1. Install NetworkManager, curl, and the NetBird daemon/runtime. If you already configured the NetBird dnf/yum repository, this is usually:
+1. Install NetworkManager, curl, and the NetBird daemon/runtime. Follow the [NetBird Fedora/Amazon Linux 2023 dnf install guide](https://docs.netbird.io/get-started/install/linux#fedora-amazon-linux-2023-dnf) to configure the NetBird dnf repository first. Once that repository is configured, this is usually:
 
    ```bash
    sudo dnf install NetworkManager curl netbird
    sudo systemctl enable --now NetworkManager netbird
    ```
 
-2. Download the latest `.rpm` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures. Set `RELEASE=snapshot` instead of `latest` if you want the continuously updated snapshot release:
+2. Download the latest `.rpm` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures.
 
    ```bash
-   RELEASE=latest
-   ARCH=$(uname -m)
-   case "$ARCH" in
-     x86_64) ASSET_ARCH=amd64 ;;
-     *) echo "native packages are currently published for x86_64 only; use the tarball fallback on $ARCH" >&2; exit 1 ;;
-   esac
-   API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest"
-   [ "$RELEASE" = latest ] || API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/$RELEASE"
-   PACKAGE_URL=$(curl -fsSL "$API_URL" | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_'"${ASSET_ARCH}"'\.rpm' | head -n1)
-   test -n "$PACKAGE_URL"
+   PACKAGE_URL=$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases \
+     | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_amd64\.rpm' \
+     | head -n1)
    curl -fL "$PACKAGE_URL" -o network-manager-netbird.rpm
    ```
 
@@ -119,35 +78,15 @@ sudo systemctl restart NetworkManager
    sudo dnf install ./network-manager-netbird.rpm
    ```
 
-4. Verify that NetworkManager can see the VPN type:
+   The package installs the NetworkManager VPN service, D-Bus policy, auth-dialog helper, desktop editor modules, and unmanaged-interface config for NetBird interfaces. The post-install script reloads D-Bus policy and NetworkManager when possible.
 
-   ```bash
-   nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
-   nmcli connection show NetBird
-   ```
-
-5. Configure one authentication path, then activate the connection. For example, with a setup key:
-
-   ```bash
-   nmcli connection modify NetBird \
-     +vpn.data "auth=setup-key,management-url=https://api.netbird.io,admin-url=https://app.netbird.io"
-   nmcli connection modify NetBird \
-     +vpn.secrets "setup-key=YOUR_SETUP_KEY"
-   nmcli connection up NetBird
-   ```
-
-   For SSO, use the interactive flow instead:
-
-   ```bash
-   nmcli connection modify NetBird +vpn.data "auth=sso,hint=alice@example.com"
-   nmcli connection up NetBird --ask
-   ```
-
-If `vpn-type netbird` is not recognized after package install, restart NetworkManager and try again:
+If NetworkManager does not recognize `vpn-type netbird` after package install, restart NetworkManager and try again:
 
 ```bash
 sudo systemctl restart NetworkManager
 ```
+
+After installation, create a VPN profile with your desktop NetworkManager frontend or the examples in [nmcli usage](#nmcli-usage).
 
 ### Manual tarball fallback
 
@@ -186,72 +125,7 @@ The tarball/source installer builds and installs desktop editor modules when the
 
 The `[libnm]` section in `/etc/NetworkManager/VPN/nm-netbird-service.name` should keep pointing at `/usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so`; that loader selects the GTK 3 or GTK 4 editor module at runtime.
 
-### System D-Bus security model
-
-Installed system-bus policy only allows root-owned system components to own or send directly to `org.freedesktop.NetworkManager.netbird`. Normal users should not call the VPN plugin service directly.
-
-Users interact with NetworkManager through `nmcli` or desktop frontends, NetworkManager applies PolicyKit and connection permission checks, NetworkManager talks to the NetBird VPN plugin, and the plugin talks to the local NetBird daemon.
-
-This does not change session-bus development workflows (`--bus=session`) or NetBird daemon socket permissions. Direct system-bus debugging calls to `org.freedesktop.NetworkManager.netbird` should be run as root.
-
-Distribution packages usually handle D-Bus policy reloads or service restarts. For manual installs, after changing the system policy file, reload/restart D-Bus and NetworkManager as appropriate for the distro. If system-bus restart is not supported safely, reboot before verifying the policy.
-
-Release artifacts are produced by GoReleaser (`.goreleaser.yml`) and published by `.github/workflows/release.yml` when pushing `v*` tags.
-
-## Build
-
-```bash
-task build
-```
-
-The Go binaries can still be built directly:
-
-```bash
-go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
-go build -o bin/nm-netbird-auth-dialog ./cmd/nm-netbird-auth-dialog
-```
-
-The desktop properties editor uses the common NetworkManager split-loader layout. For local development `task build:properties` builds the libnm loader and GTK 3 editor; `task build:properties:gtk4` builds the GTK 4 editor. `task test:properties` runs the settings mapping tests; distro builds may also use the Meson files under `properties/`.
-
-## Running the service
-
-Development session bus:
-
-```bash
-./bin/nm-netbird-service --bus=session --debug
-```
-
-System bus, as NetworkManager would use it:
-
-```bash
-sudo ./bin/nm-netbird-service --bus=system --debug
-```
-
-Useful service flags:
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `--bus` | `system` | D-Bus bus: `system` or `session` |
-| `--debug` | `false` | Verbose lifecycle and signal logging |
-| `--daemon-address` | `unix:///var/run/netbird.sock` | NetBird daemon gRPC endpoint |
-| `--start-daemon` | `false` | Ask the configured init system to start NetBird if the first dial fails |
-| `--daemon-init-system` | `auto` | Init system for daemon autostart (`auto` or `systemd`) |
-| `--daemon-service` | `netbird` | Daemon service name to start |
-| `--daemon-dial-timeout` | `3s` | Daemon dial timeout |
-| `--daemon-rpc-timeout` | `15s` | Per-RPC timeout when no tighter deadline exists |
-| `--activation-timeout` | `90s` | Maximum time to wait for activation phases other than interactive SSO |
-| `--sso-wait-timeout` | `10m` | Maximum time to wait for interactive SSO completion |
-
-Environment overrides are also supported:
-
-| Variable | Overrides |
-| --- | --- |
-| `NM_NETBIRD_DAEMON_ADDRESS` | `--daemon-address` |
-| `NM_NETBIRD_DAEMON_DIAL_TIMEOUT` | `--daemon-dial-timeout` |
-| `NM_NETBIRD_DAEMON_RPC_TIMEOUT` | `--daemon-rpc-timeout` |
-| `NM_NETBIRD_START_DAEMON` | `--start-daemon` |
-| `NM_NETBIRD_DAEMON_INIT_SYSTEM` | `--daemon-init-system` |
-| `NM_NETBIRD_DAEMON_SERVICE` | `--daemon-service` |
+For system D-Bus policy details, see [System D-Bus security model](docs/d-bus-security-model.md).
 
 ## NetworkManager unmanaged interface
 
@@ -273,24 +147,9 @@ If you configure a custom daemon `interfaceName` or set `interface-name=` in `vp
 
 These examples assume the plugin service metadata has registered VPN type `netbird` with NetworkManager.
 
-### Existing daemon login
-
-Each NetworkManager connection maps to its own NetBird profile, named `nm-<NetworkManager connection UUID>`.
-
-```bash
-nmcli connection add type vpn con-name netbird vpn-type netbird ifname --
-nmcli connection up netbird
-```
-
-Activation maps to daemon `Up`; deactivation maps to daemon `Down`:
-
-```bash
-nmcli connection down netbird
-```
-
 ### Setup-key login
 
-For non-interactive first activation with a setup key. If `username` is omitted, the plugin derives the NetBird daemon profile owner from NetworkManager connection permissions when available, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`; set `username` explicitly if you need another owner.
+For non-interactive first activation with a setup key. If `username` is omitted, the plugin derives the NetBird daemon profile owner from NetworkManager connection permissions when available or from the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`; set `username` explicitly if you need another owner.
 
 ```bash
 nmcli connection add type vpn con-name netbird-setup vpn-type netbird ifname --
@@ -304,20 +163,13 @@ nmcli connection modify netbird-setup \
 nmcli connection up netbird-setup
 ```
 
-### Profile mapping
-
-Every NetworkManager connection gets a separate NetBird profile named `nm-<connection UUID>` (falling back to a sanitized connection ID only if NetworkManager did not provide a UUID). The profile owner username is inferred from NetworkManager connection permissions when possible, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`; set `username` explicitly if you need another owner.
-
-NetBird still supports one active daemon engine. If a different profile is connected or connecting, the plugin fails safely instead of switching the active session. Switching between different NetworkManager-backed profiles is allowed once the daemon is disconnected.
-
-### SSO login
-
-For `nmcli`, prefer an existing daemon login:
+Activation maps to daemon `Up`; deactivation maps to daemon `Down`:
 
 ```bash
-netbird login
-nmcli connection up netbird
+nmcli connection down netbird-setup
 ```
+
+### SSO login
 
 Interactive SSO is exposed through NetworkManager's interactive VPN flow in `nmcli --ask`. The service emits the verification URL/user code as a login banner and waits for daemon `WaitSSOLogin` completion using the longer SSO wait timeout.
 
@@ -347,7 +199,7 @@ The plugin reads keys from NetworkManager `vpn.data` and `vpn.secrets`. Store se
 
 | Key | Aliases | Description |
 | --- | --- | --- |
-| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Values: `setup-key` or `sso`; omit to use an existing daemon session. Legacy `login`/`reuse` values are accepted for compatibility but are not exposed by the editor |
+| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Supported values: `setup-key` or `sso` |
 | `setup-key` | `setupKey`, `netbird-setup-key` | NetBird setup key secret |
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login |
@@ -371,14 +223,4 @@ Service logs depend on how the plugin is launched. For a systemd-managed service
 ```bash
 journalctl -u nm-netbird-service -f
 journalctl -u netbird -f
-```
-
-Development D-Bus helpers:
-
-```bash
-task run:session
-task dbus:introspect
-task dbus:state
-task dbus:connect
-task dbus:disconnect
 ```

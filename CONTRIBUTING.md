@@ -37,17 +37,20 @@ Or, with Task:
 task tidy
 ```
 
-Build the service:
-
-```bash
-go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
-```
-
-Or:
+Build everything:
 
 ```bash
 task build
 ```
+
+The Go binaries can also be built directly:
+
+```bash
+go build -o bin/nm-netbird-service ./cmd/nm-netbird-service
+go build -o bin/nm-netbird-auth-dialog ./cmd/nm-netbird-auth-dialog
+```
+
+The desktop properties editor uses the common NetworkManager split-loader layout. For local development, `task build:properties` builds the libnm loader and GTK 3 editor; `task build:properties:gtk4` builds the GTK 4 editor. `task test:properties` runs the settings mapping tests. Distro builds may also use the Meson files under `properties/`.
 
 ## Local development service
 
@@ -68,6 +71,32 @@ Run on the system bus only when doing NetworkManager integration testing:
 ```bash
 sudo ./bin/nm-netbird-service --bus=system --debug
 ```
+
+Useful service flags:
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--bus` | `system` | D-Bus bus: `system` or `session` |
+| `--debug` | `false` | Verbose lifecycle and signal logging |
+| `--daemon-address` | `unix:///var/run/netbird.sock` | NetBird daemon gRPC endpoint |
+| `--start-daemon` | `false` | Ask the configured init system to start NetBird if the first dial fails |
+| `--daemon-init-system` | `auto` | Init system for daemon autostart (`auto` or `systemd`) |
+| `--daemon-service` | `netbird` | Daemon service name to start |
+| `--daemon-dial-timeout` | `3s` | Daemon dial timeout |
+| `--daemon-rpc-timeout` | `15s` | Per-RPC timeout when no tighter deadline exists |
+| `--activation-timeout` | `90s` | Maximum time to wait for activation phases other than interactive SSO |
+| `--sso-wait-timeout` | `10m` | Maximum time to wait for interactive SSO completion |
+
+Environment overrides are also supported:
+
+| Variable | Overrides |
+| --- | --- |
+| `NM_NETBIRD_DAEMON_ADDRESS` | `--daemon-address` |
+| `NM_NETBIRD_DAEMON_DIAL_TIMEOUT` | `--daemon-dial-timeout` |
+| `NM_NETBIRD_DAEMON_RPC_TIMEOUT` | `--daemon-rpc-timeout` |
+| `NM_NETBIRD_START_DAEMON` | `--start-daemon` |
+| `NM_NETBIRD_DAEMON_INIT_SYSTEM` | `--daemon-init-system` |
+| `NM_NETBIRD_DAEMON_SERVICE` | `--daemon-service` |
 
 ## Testing
 
@@ -143,13 +172,7 @@ sudo ./bin/nm-netbird-service \
 
 ## NetworkManager/nmcli testing
 
-For end-to-end testing, install or provide NetworkManager VPN service metadata for VPN type `netbird`, then create a profile:
-
-```bash
-nmcli connection add type vpn con-name netbird vpn-type netbird ifname --
-nmcli connection up netbird
-nmcli connection down netbird
-```
+For end-to-end testing, install or provide NetworkManager VPN service metadata for VPN type `netbird`, then test a supported authentication flow.
 
 Setup-key flow:
 
@@ -160,9 +183,17 @@ nmcli connection modify netbird-setup \
 nmcli connection modify netbird-setup \
   +vpn.secrets "setup-key=YOUR_SETUP_KEY"
 nmcli connection up netbird-setup
+nmcli connection down netbird-setup
 ```
 
-Profile mapping is automatic: each NetworkManager connection uses a NetBird daemon profile named `nm-<connection UUID>`.
+Interactive SSO flow:
+
+```bash
+nmcli connection add type vpn con-name netbird-sso vpn-type netbird ifname --
+nmcli connection modify netbird-sso +vpn.data "auth=sso,hint=alice@example.com"
+nmcli connection up netbird-sso --ask
+nmcli connection down netbird-sso
+```
 
 See `README.md` for the complete list of supported `vpn.data` and `vpn.secrets` keys.
 
@@ -196,6 +227,12 @@ If a test or profile uses a custom daemon `interfaceName` / VPN `interface-name`
 ## Pragmatic Go style
 
 This repository values pragmatic, explicit, locally understandable Go.
+
+## Release artifacts
+
+Release artifacts are produced by GoReleaser (`.goreleaser.yml`) and published by `.github/workflows/release.yml` when pushing `v*` tags. Snapshot artifacts are built by the same workflow for non-tag builds.
+
+The release workflow builds precompiled amd64/x86_64 NetworkManager desktop editor modules with `scripts/build-release-properties.sh` before GoReleaser packages `.deb`, `.rpm`, and tarball artifacts.
 
 ## Before submitting changes
 
