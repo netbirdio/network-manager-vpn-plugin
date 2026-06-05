@@ -23,7 +23,7 @@ const expectedNoSecretExternalUI = "[VPN Plugin UI]\n" +
 	"[no-secret]\n" +
 	"Value=true\n" +
 	"Label=\n" +
-	"IsSecret=true\n" +
+	"IsSecret=false\n" +
 	"ShouldAsk=false\n"
 
 func TestParseArgs(t *testing.T) {
@@ -92,6 +92,13 @@ func TestRunFixtures(t *testing.T) {
 			wantStdout: expectedNoSecretExternalUI,
 		},
 		{
+			name:       "ignores blank separator lines",
+			args:       baseArgs(),
+			stdin:      "DATA_KEY=auth\nDATA_VAL=sso\n\nDONE\n",
+			wantCode:   0,
+			wantStdout: "no-secret\ntrue\n\n\n",
+		},
+		{
 			name:     "setup-key required but interaction disallowed",
 			args:     baseArgs(),
 			stdin:    "DATA_KEY=auth\nDATA_VAL=setup-key\nDONE\n",
@@ -145,6 +152,29 @@ func TestRunFixtures(t *testing.T) {
 	}
 }
 
+func TestRunPromptsForSSOLoginHint(t *testing.T) {
+	args := append(baseArgs(), "--allow-interaction", "--external-ui-mode")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run(args, strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"Title=NetBird SSO\n",
+		"[x-netbird-sso-hint]\n",
+		"Label=Email hint\n",
+		"IsSecret=false\n",
+		"ShouldAsk=true\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout does not contain %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestRunIncludesActivationIDForDynamicSetupKeyPrompt(t *testing.T) {
 	args := append(baseArgs(),
 		"--allow-interaction",
@@ -194,11 +224,13 @@ func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
 	got := stdout.String()
 	for _, want := range []string{
 		"Title=NetBird SSO login required\n",
-		"https://login.netbird.io/device?user_code=ABCD-EFGH",
+		"Complete NetBird SSO in the browser window that opens.",
 		"User code: ABCD-EFGH",
 		"Login hint: alice@example.com",
 		"[x-netbird-sso-continue]\n",
 		"Value=true\n",
+		"IsSecret=false\n",
+		"ShouldAsk=false\n",
 		"[x-netbird-activation-id]\n",
 		"Value=42\n",
 	} {

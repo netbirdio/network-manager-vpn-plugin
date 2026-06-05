@@ -7,6 +7,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -29,7 +31,9 @@ const (
 	setupKeyPrompt                = "Enter the NetBird setup key for this connection."
 	setupKeyTitle                 = "NetBird authentication"
 	ssoTitle                      = "NetBird SSO login required"
-	ssoContinueLabel              = "Leave as true and click OK after completing SSO login"
+	ssoHintLabel                  = "Email hint"
+	ssoHintPrompt                 = "Enter an optional NetBird SSO login hint, then click Connect."
+	ssoContinueLabel              = "Continue"
 	internalPromptLabel           = "NetBird internal value"
 	maxProtocolLineLen            = 512 * 1024
 	maxProtocolLines              = 4096
@@ -205,6 +209,13 @@ type protocolParser struct {
 }
 
 func (p *protocolParser) consume(line string) error {
+	// NetworkManager may emit blank separator lines between VPN data/secret
+	// entries. They are not key/value content, so ignore them while preserving
+	// explicit empty values encoded as DATA_VAL= or SECRET_VAL=.
+	if line == "" {
+		return nil
+	}
+
 	if line == "DONE" {
 		if err := p.flush(); err != nil {
 			return err
@@ -307,6 +318,10 @@ func writeResponse(w io.Writer, opts Options, details vpnDetails) error {
 		return writeSSOResponse(w, opts, hints)
 	}
 
+	if opts.AllowInteraction && ssoHintRequired(details) {
+		return writeSSOHintPrompt(w, opts, details)
+	}
+
 	needsSetupKey, setupKey, err := setupKeyRequirement(hints, details)
 	if err != nil {
 		return err
@@ -324,6 +339,11 @@ func writeResponse(w io.Writer, opts Options, details vpnDetails) error {
 		return writeExternalSetupKey(w, hints, setupKey, shouldAsk)
 	}
 	return writeStandardSecret(w, keySetupKey, setupKey)
+}
+
+func ssoHintRequired(details vpnDetails) bool {
+	authMode := normalizeAuthMode(firstSetting(details.data, keyAuth, "auth-mode", "authentication", "login-mode"))
+	return authMode == "sso"
 }
 
 func setupKeyRequirement(hints hintValues, details vpnDetails) (bool, string, error) {
@@ -492,7 +512,7 @@ func writeStandardSecrets(w io.Writer, values []standardSecret) error {
 func writeExternalNoSecret(w io.Writer) error {
 	var b strings.Builder
 	writeKeyfileUIHeader(&b, "", "")
-	writeKeyfileEntry(&b, keyNoSecret, "true", "", false)
+	writeKeyfileEntry(&b, keyNoSecret, "true", "", false, false)
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -500,10 +520,25 @@ func writeExternalNoSecret(w io.Writer) error {
 func writeExternalSetupKey(w io.Writer, hints hintValues, value string, shouldAsk bool) error {
 	var b strings.Builder
 	writeKeyfileUIHeader(&b, setupKeyTitle, setupKeyPrompt)
-	writeKeyfileEntry(&b, keySetupKey, value, setupKeyLabel, shouldAsk)
+	writeKeyfileEntry(&b, keySetupKey, value, setupKeyLabel, true, shouldAsk)
 	writeInternalHintEntries(&b, hints)
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+func writeSSOHintPrompt(w io.Writer, opts Options, details vpnDetails) error {
+	value := firstSetting(details.data, "hint", "login-hint", "sso-hint", keyNetBirdSSOHint)
+	if opts.ExternalUIMode {
+		var b strings.Builder
+		writeKeyfileUIHeader(&b, "NetBird SSO", ssoHintPrompt)
+		writeKeyfileEntry(&b, keyNetBirdSSOHint, value, ssoHintLabel, false, true)
+		_, err := io.WriteString(w, b.String())
+		return err
+	}
+	return writeStandardSecrets(w, []standardSecret{
+		{key: keyNetBirdSSOHint, value: value},
+		{key: "user-name", value: value},
+	})
 }
 
 func writeSSOResponse(w io.Writer, opts Options, hints hintValues) error {
@@ -517,21 +552,25 @@ func writeSSOResponse(w io.Writer, opts Options, hints hintValues) error {
 }
 
 func writeExternalSSO(w io.Writer, hints hintValues) error {
+	openSSOBrowser(hints)
 	var b strings.Builder
 	writeKeyfileUIHeader(&b, ssoTitle, formatSSODescription(hints))
-	writeKeyfileEntry(&b, keyNetBirdSSOContinue, "true", ssoContinueLabel, true)
-	writeInternalHintEntries(&b, hints)
+	writeKeyfileEntry(&b, keyNetBirdSSOContinue, "true", ssoContinueLabel, false, false)
+	// The URL, user code, and login hint are already shown in the UI description
+	// and LoginBanner. Do not add them again as hidden fields; some frontends
+	// render non-asked fields visibly, which makes the dialog noisy and hard to
+	// use. Only preserve the activation id needed to correlate NewSecrets.
+	writeInternalHintEntry(&b, hints, keyActivationID)
 	_, err := io.WriteString(w, b.String())
 	return err
 }
 
 func writeStandardSSO(w io.Writer, hints hintValues) error {
+	// nmcli has no rich UI for external auth. The service already emits the SSO
+	// URL/code via LoginBanner, so return only the continuation marker instead of
+	// several internal values that nmcli may render as confusing prompts.
 	values := []standardSecret{{key: keyNetBirdSSOContinue, value: "true"}}
 	values = appendHintValue(values, hints, keyActivationID)
-	values = appendHintValue(values, hints, keyNetBirdSSOVerificationURI)
-	values = appendHintValue(values, hints, keyNetBirdSSOVerificationFull)
-	values = appendHintValue(values, hints, keyNetBirdSSOUserCode)
-	values = appendHintValue(values, hints, keyNetBirdSSOHint)
 	return writeStandardSecrets(w, values)
 }
 
@@ -548,7 +587,7 @@ func writeInternalHintEntry(b *strings.Builder, hints hintValues, key string) {
 	if value == "" {
 		return
 	}
-	writeKeyfileEntry(b, key, value, internalPromptLabel, false)
+	writeKeyfileEntry(b, key, value, internalPromptLabel, false, false)
 }
 
 func appendHintValue(values []standardSecret, hints hintValues, key string) []standardSecret {
@@ -561,18 +600,31 @@ func appendHintValue(values []standardSecret, hints hintValues, key string) []st
 
 func formatSSODescription(hints hintValues) string {
 	var parts []string
-	parts = append(parts, "Complete NetBird SSO login in your browser.")
-	if uri := firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI)); uri != "" {
-		parts = append(parts, "Open this URL:", uri)
-	}
+	parts = append(parts, "Complete NetBird SSO in the browser window that opens.")
 	if code := hints.value(keyNetBirdSSOUserCode); code != "" {
 		parts = append(parts, "User code: "+code)
 	}
 	if hint := hints.value(keyNetBirdSSOHint); hint != "" {
 		parts = append(parts, "Login hint: "+hint)
 	}
-	parts = append(parts, "Click OK after completing browser login, or Cancel to stop activation.")
+	parts = append(parts, "After browser login completes, click Connect to finish activation.")
 	return strings.Join(parts, "\n\n")
+}
+
+func openSSOBrowser(hints hintValues) {
+	uri := firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI))
+	if uri == "" || !hasGraphicalSession() {
+		return
+	}
+	cmd := exec.Command("xdg-open", uri)
+	cmd.Stdin = strings.NewReader("")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	_ = cmd.Start()
+}
+
+func hasGraphicalSession() bool {
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
 func firstNonEmpty(values ...string) string {
@@ -601,14 +653,15 @@ func writeKeyfileUIHeader(b *strings.Builder, title string, description string) 
 	b.WriteByte('\n')
 }
 
-func writeKeyfileEntry(b *strings.Builder, key string, value string, label string, shouldAsk bool) {
+func writeKeyfileEntry(b *strings.Builder, key string, value string, label string, isSecret bool, shouldAsk bool) {
 	b.WriteString("[")
 	b.WriteString(key)
 	b.WriteString("]\nValue=")
 	b.WriteString(escapeKeyfileValue(value))
 	b.WriteString("\nLabel=")
 	b.WriteString(escapeKeyfileValue(label))
-	b.WriteString("\nIsSecret=true")
+	b.WriteString("\nIsSecret=")
+	b.WriteString(strconv.FormatBool(isSecret))
 	b.WriteString("\nShouldAsk=")
 	b.WriteString(strconv.FormatBool(shouldAsk))
 	b.WriteByte('\n')
