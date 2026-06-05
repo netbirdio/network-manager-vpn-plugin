@@ -166,7 +166,7 @@ These examples assume the plugin service metadata has registered VPN type `netbi
 
 ### Existing daemon login
 
-Each NetworkManager connection maps to its own NetBird profile by default, named `nm-<NetworkManager connection UUID>`. Use this when that daemon profile already has a valid session, or set `profile-name` to an existing daemon profile:
+Each NetworkManager connection maps to its own NetBird profile, named `nm-<NetworkManager connection UUID>`.
 
 ```bash
 nmcli connection add type vpn con-name netbird vpn-type netbird ifname --
@@ -195,20 +195,11 @@ nmcli connection modify netbird-setup \
 nmcli connection up netbird-setup
 ```
 
-### Profile selection
+### Profile mapping
 
-By default, every NetworkManager connection gets a separate NetBird profile named `nm-<connection UUID>` (falling back to a sanitized connection ID only if NetworkManager did not provide a UUID). The profile owner username is inferred from NetworkManager connection permissions when possible, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`. You can override the mapping with `profile-name` and optional `username`.
+Every NetworkManager connection gets a separate NetBird profile named `nm-<connection UUID>` (falling back to a sanitized connection ID only if NetworkManager did not provide a UUID). The profile owner username is inferred from NetworkManager connection permissions when possible, then from a matching active daemon profile or the service process user. For system-wide NetworkManager profiles, that service process user is usually `root`; set `username` explicitly if you need another owner.
 
 NetBird still supports one active daemon engine. If a different profile is connected or connecting, the plugin fails safely instead of switching the active session. Switching between different NetworkManager-backed profiles is allowed once the daemon is disconnected.
-
-```bash
-nmcli connection add type vpn con-name netbird-prod vpn-type netbird ifname --
-
-nmcli connection modify netbird-prod \
-  +vpn.data "profile-name=prod,username=alice"
-
-nmcli connection up netbird-prod
-```
 
 ### SSO login
 
@@ -236,7 +227,7 @@ The packaged libnm editor plugin lets desktop NetworkManager frontends such as G
 The editor writes the same `vpn.data` and `vpn.secrets` keys used by `nmcli`:
 
 - setup keys and pre-shared keys are saved in `vpn.secrets`
-- management/admin URLs, profile name, username, interface name, hostname, auth mode, and SSO login hint are saved in `vpn.data`
+- management/admin URLs, username, interface name, hostname, auth mode, and SSO login hint are saved in `vpn.data`
 - unknown existing NetBird data/secrets are preserved when saving
 
 The editor validates only local field syntax. It does not contact the NetBird daemon while editing.
@@ -251,7 +242,6 @@ The plugin reads keys from NetworkManager `vpn.data` and `vpn.secrets`. Store se
 | `setup-key` | `setupKey`, `netbird-setup-key` | NetBird setup key secret |
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login |
-| `profile-name` | `profileName`, `profile`, `netbird-profile-name` | NetBird daemon profile name; defaults to `nm-<NetworkManager connection UUID>` |
 | `username` | `user-name`, `user`, `netbird-username` | NetBird daemon profile owner username; inferred when omitted |
 | `hostname` | `host-name` | Hostname sent during daemon login |
 | `interface-name` | `interfaceName`, `netbird-interface-name` | Desired NetBird interface name |

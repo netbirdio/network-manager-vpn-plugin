@@ -154,14 +154,7 @@ nmcli connection modify netbird-setup \
 nmcli connection up netbird-setup
 ```
 
-Profile flow:
-
-```bash
-nmcli connection add type vpn con-name netbird-prod vpn-type netbird ifname --
-nmcli connection modify netbird-prod \
-  +vpn.data "profile-name=prod,username=alice"
-nmcli connection up netbird-prod
-```
+Profile mapping is automatic: each NetworkManager connection uses a NetBird daemon profile named `nm-<connection UUID>`.
 
 See `README.md` for the complete list of supported `vpn.data` and `vpn.secrets` keys.
 

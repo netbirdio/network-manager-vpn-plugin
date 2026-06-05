@@ -24,7 +24,7 @@ test_empty_connection_saves_defaults(void)
     vpn = get_vpn(connection);
     g_assert_nonnull(vpn);
     g_assert_cmpstr(nm_setting_vpn_get_service_type(vpn), ==, NETBIRD_SERVICE_NAME);
-    g_assert_null(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH));
+    g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH), ==, NETBIRD_AUTH_SSO);
 
     s_con = nm_connection_get_setting_connection(connection);
     g_assert_nonnull(s_con);
@@ -54,7 +54,6 @@ test_existing_values_load_and_save_canonical_keys(void)
     netbird_editor_values_load(&values, connection);
     g_assert_cmpstr(values.auth_mode, ==, NETBIRD_AUTH_SETUP_KEY);
     g_assert_cmpstr(values.management_url, ==, "https://api.example.com");
-    g_assert_cmpstr(values.profile_name, ==, "prod");
     g_assert_cmpstr(values.setup_key, ==, "plain-secret");
 
     g_assert_true(netbird_editor_values_save(&values, connection, &error));
@@ -62,7 +61,7 @@ test_existing_values_load_and_save_canonical_keys(void)
 
     g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH), ==, NETBIRD_AUTH_SETUP_KEY);
     g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_MANAGEMENT_URL), ==, "https://api.example.com");
-    g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_PROFILE_NAME), ==, "prod");
+    g_assert_null(nm_setting_vpn_get_data_item(vpn, "profile"));
     g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, "unknown-netbird-key"), ==, "keep-me");
     g_assert_null(nm_setting_vpn_get_data_item(vpn, "auth-mode"));
     g_assert_null(nm_setting_vpn_get_data_item(vpn, "setupKey"));
@@ -73,7 +72,7 @@ test_existing_values_load_and_save_canonical_keys(void)
 }
 
 static void
-test_login_auth_is_preserved(void)
+test_legacy_auth_defaults_to_sso(void)
 {
     NMConnection *connection = nm_simple_connection_new();
     NMSettingVpn *vpn = NM_SETTING_VPN(nm_setting_vpn_new());
@@ -86,11 +85,11 @@ test_login_auth_is_preserved(void)
 
     netbird_editor_values_init(&values);
     netbird_editor_values_load(&values, connection);
-    g_assert_cmpstr(values.auth_mode, ==, NETBIRD_AUTH_LOGIN);
+    g_assert_cmpstr(values.auth_mode, ==, NETBIRD_AUTH_SSO);
 
     g_assert_true(netbird_editor_values_save(&values, connection, &error));
     g_assert_no_error(error);
-    g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH), ==, NETBIRD_AUTH_LOGIN);
+    g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH), ==, NETBIRD_AUTH_SSO);
 
     netbird_editor_values_clear(&values);
     g_object_unref(connection);
@@ -176,7 +175,7 @@ main(int argc, char **argv)
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/netbird-editor/empty-defaults", test_empty_connection_saves_defaults);
     g_test_add_func("/netbird-editor/canonical-save", test_existing_values_load_and_save_canonical_keys);
-    g_test_add_func("/netbird-editor/login-preserved", test_login_auth_is_preserved);
+    g_test_add_func("/netbird-editor/legacy-auth-defaults-to-sso", test_legacy_auth_defaults_to_sso);
     g_test_add_func("/netbird-editor/sso-save", test_sso_saves_hint_and_removes_setup_key);
     g_test_add_func("/netbird-editor/clear-fields", test_empty_fields_remove_known_keys);
     g_test_add_func("/netbird-editor/validation", test_validation_rejects_invalid_url_and_interface);

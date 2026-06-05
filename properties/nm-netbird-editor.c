@@ -13,7 +13,6 @@ struct _NetbirdEditor {
     GtkWidget *sso_section;
     GtkWidget *management_url_entry;
     GtkWidget *admin_url_entry;
-    GtkWidget *profile_name_entry;
     GtkWidget *username_entry;
     GtkWidget *setup_key_entry;
     GtkWidget *hint_entry;
@@ -212,11 +211,10 @@ fill_values_from_ui(NetbirdEditor *self, NetbirdEditorValues *values)
 
     auth_mode = gtk_combo_box_get_active_id(GTK_COMBO_BOX(self->auth_combo));
     g_free(values->auth_mode);
-    values->auth_mode = g_strdup(auth_mode ? auth_mode : NETBIRD_AUTH_REUSE);
+    values->auth_mode = g_strdup(auth_mode ? auth_mode : NETBIRD_AUTH_SSO);
 
     values->management_url = trimmed_entry_text(self->management_url_entry);
     values->admin_url = trimmed_entry_text(self->admin_url_entry);
-    values->profile_name = trimmed_entry_text(self->profile_name_entry);
     values->username = trimmed_entry_text(self->username_entry);
     values->hint = trimmed_entry_text(self->hint_entry);
     values->interface_name = trimmed_entry_text(self->interface_name_entry);
@@ -231,11 +229,10 @@ load_values_into_ui(NetbirdEditor *self, const NetbirdEditorValues *values)
     self->loading = TRUE;
 
     if (!gtk_combo_box_set_active_id(GTK_COMBO_BOX(self->auth_combo), values->auth_mode))
-        gtk_combo_box_set_active_id(GTK_COMBO_BOX(self->auth_combo), NETBIRD_AUTH_REUSE);
+        gtk_combo_box_set_active_id(GTK_COMBO_BOX(self->auth_combo), NETBIRD_AUTH_SSO);
 
     set_entry_text(self->management_url_entry, values->management_url);
     set_entry_text(self->admin_url_entry, values->admin_url);
-    set_entry_text(self->profile_name_entry, values->profile_name);
     set_entry_text(self->username_entry, values->username);
     set_entry_text(self->hint_entry, values->hint);
     set_entry_text(self->interface_name_entry, values->interface_name);
@@ -257,24 +254,20 @@ build_main_section(NetbirdEditor *self)
     grid = section_grid(section);
 
     self->auth_combo = gtk_combo_box_text_new();
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(self->auth_combo), NETBIRD_AUTH_REUSE, "Reuse existing daemon auth");
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(self->auth_combo), NETBIRD_AUTH_LOGIN, "Force daemon login");
-    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(self->auth_combo), NETBIRD_AUTH_SETUP_KEY, "Setup key");
     gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(self->auth_combo), NETBIRD_AUTH_SSO, "SSO");
+    gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(self->auth_combo), NETBIRD_AUTH_SETUP_KEY, "Setup key");
     gtk_widget_set_hexpand(self->auth_combo, TRUE);
 
     self->management_url_entry = new_entry();
     gtk_entry_set_placeholder_text(GTK_ENTRY(self->management_url_entry), "https://api.netbird.io");
     self->admin_url_entry = new_entry();
     gtk_entry_set_placeholder_text(GTK_ENTRY(self->admin_url_entry), "https://app.netbird.io");
-    self->profile_name_entry = new_entry();
     self->username_entry = new_entry();
 
     attach_row(grid, 0, "Auth mode", self->auth_combo);
     attach_row(grid, 1, "Management URL", self->management_url_entry);
     attach_row(grid, 2, "Admin URL", self->admin_url_entry);
-    attach_row(grid, 3, "Profile name", self->profile_name_entry);
-    attach_row(grid, 4, "Username", self->username_entry);
+    attach_row(grid, 3, "Username", self->username_entry);
 
     box_append_child(self->widget, section);
 }
@@ -339,7 +332,6 @@ connect_ui_signals(NetbirdEditor *self)
     connect_changed(self, self->auth_combo);
     connect_changed(self, self->management_url_entry);
     connect_changed(self, self->admin_url_entry);
-    connect_changed(self, self->profile_name_entry);
     connect_changed(self, self->username_entry);
     connect_changed(self, self->setup_key_entry);
     connect_changed(self, self->hint_entry);

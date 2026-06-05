@@ -32,7 +32,7 @@ static const char *const admin_url_keys[] = {
 };
 
 static const char *const profile_name_keys[] = {
-    NETBIRD_KEY_PROFILE_NAME,
+    "profile-name",
     "profileName",
     "profile",
     "netbird-profile-name",
@@ -85,7 +85,7 @@ netbird_editor_values_init(NetbirdEditorValues *values)
 {
     g_return_if_fail(values != NULL);
     memset(values, 0, sizeof(*values));
-    values->auth_mode = g_strdup(NETBIRD_AUTH_REUSE);
+    values->auth_mode = g_strdup(NETBIRD_AUTH_SSO);
 }
 
 void
@@ -97,7 +97,6 @@ netbird_editor_values_clear(NetbirdEditorValues *values)
     g_clear_pointer(&values->auth_mode, g_free);
     g_clear_pointer(&values->management_url, g_free);
     g_clear_pointer(&values->admin_url, g_free);
-    g_clear_pointer(&values->profile_name, g_free);
     g_clear_pointer(&values->username, g_free);
     g_clear_pointer(&values->hint, g_free);
     g_clear_pointer(&values->interface_name, g_free);
@@ -179,13 +178,13 @@ normalize_auth_mode(const char *value)
     }
 
     if (lower[0] == '\0')
-        normalized = g_strdup(NETBIRD_AUTH_REUSE);
+        normalized = g_strdup(NETBIRD_AUTH_SSO);
     else if (g_strcmp0(lower, "setupkey") == 0 || g_strcmp0(lower, "setup-key") == 0 || g_strcmp0(lower, "key") == 0)
         normalized = g_strdup(NETBIRD_AUTH_SETUP_KEY);
     else if (g_strcmp0(lower, "sso") == 0 || g_strcmp0(lower, "browser") == 0 || g_strcmp0(lower, "interactive") == 0)
         normalized = g_strdup(NETBIRD_AUTH_SSO);
-    else if (g_strcmp0(lower, "login") == 0 || g_strcmp0(lower, "force-login") == 0)
-        normalized = g_strdup(NETBIRD_AUTH_LOGIN);
+    else if (g_strcmp0(lower, "login") == 0 || g_strcmp0(lower, "force-login") == 0 || g_strcmp0(lower, "reuse") == 0)
+        normalized = g_strdup(NETBIRD_AUTH_SSO);
     else
         normalized = g_strdup(lower);
 
@@ -220,18 +219,16 @@ netbird_editor_values_load(NetbirdEditorValues *values, NMConnection *connection
 
     auth_mode = normalize_auth_mode(vpn_data_first(vpn, auth_keys));
     g_free(values->auth_mode);
-    if (g_strcmp0(auth_mode, NETBIRD_AUTH_LOGIN) == 0 ||
-        g_strcmp0(auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0 ||
+    if (g_strcmp0(auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0 ||
         g_strcmp0(auth_mode, NETBIRD_AUTH_SSO) == 0)
         values->auth_mode = auth_mode;
     else {
-        values->auth_mode = g_strdup(NETBIRD_AUTH_REUSE);
+        values->auth_mode = g_strdup(NETBIRD_AUTH_SSO);
         g_free(auth_mode);
     }
 
     replace_string(&values->management_url, vpn_data_first(vpn, management_url_keys));
     replace_string(&values->admin_url, vpn_data_first(vpn, admin_url_keys));
-    replace_string(&values->profile_name, vpn_data_first(vpn, profile_name_keys));
     replace_string(&values->username, vpn_data_first(vpn, username_keys));
     replace_string(&values->hint, vpn_data_first(vpn, hint_keys));
     replace_string(&values->interface_name, vpn_data_first(vpn, interface_name_keys));
@@ -315,11 +312,9 @@ netbird_editor_values_validate(const NetbirdEditorValues *values, GError **error
 {
     g_return_val_if_fail(values != NULL, FALSE);
 
-    if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_REUSE) != 0 &&
-        g_strcmp0(values->auth_mode, NETBIRD_AUTH_LOGIN) != 0 &&
-        g_strcmp0(values->auth_mode, NETBIRD_AUTH_SETUP_KEY) != 0 &&
+    if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SETUP_KEY) != 0 &&
         g_strcmp0(values->auth_mode, NETBIRD_AUTH_SSO) != 0)
-        return set_validation_error(error, NETBIRD_EDITOR_ERROR_INVALID_AUTH, "auth must be reuse, login, setup-key, or sso");
+        return set_validation_error(error, NETBIRD_EDITOR_ERROR_INVALID_AUTH, "auth must be setup-key or sso");
 
     if (!is_http_url(values->management_url))
         return set_validation_error(error, NETBIRD_EDITOR_ERROR_INVALID_URL, "management-url must be an HTTP or HTTPS URL");
@@ -418,16 +413,14 @@ netbird_editor_values_save(const NetbirdEditorValues *values, NMConnection *conn
     g_object_set(vpn, NM_SETTING_VPN_SERVICE_TYPE, NETBIRD_SERVICE_NAME, NULL);
 
     remove_data_keys(vpn, auth_keys);
-    if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_LOGIN) == 0)
-        nm_setting_vpn_add_data_item(vpn, NETBIRD_KEY_AUTH, NETBIRD_AUTH_LOGIN);
-    else if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0)
+    if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0)
         nm_setting_vpn_add_data_item(vpn, NETBIRD_KEY_AUTH, NETBIRD_AUTH_SETUP_KEY);
     else if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SSO) == 0)
         nm_setting_vpn_add_data_item(vpn, NETBIRD_KEY_AUTH, NETBIRD_AUTH_SSO);
 
     set_data_item(vpn, NETBIRD_KEY_MANAGEMENT_URL, management_url_keys, values->management_url);
     set_data_item(vpn, NETBIRD_KEY_ADMIN_URL, admin_url_keys, values->admin_url);
-    set_data_item(vpn, NETBIRD_KEY_PROFILE_NAME, profile_name_keys, values->profile_name);
+    remove_data_keys(vpn, profile_name_keys);
     set_data_item(vpn, NETBIRD_KEY_USERNAME, username_keys, values->username);
     set_data_item(vpn, NETBIRD_KEY_INTERFACE_NAME, interface_name_keys, values->interface_name);
     set_data_item(vpn, NETBIRD_KEY_HOSTNAME, hostname_keys, values->hostname);

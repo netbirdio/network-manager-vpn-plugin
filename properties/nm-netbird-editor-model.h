@@ -15,7 +15,6 @@
 #define NETBIRD_KEY_SETUP_KEY "setup-key"
 #define NETBIRD_KEY_MANAGEMENT_URL "management-url"
 #define NETBIRD_KEY_ADMIN_URL "admin-url"
-#define NETBIRD_KEY_PROFILE_NAME "profile-name"
 #define NETBIRD_KEY_USERNAME "username"
 #define NETBIRD_KEY_HINT "hint"
 #define NETBIRD_KEY_INTERFACE_NAME "interface-name"
@@ -37,7 +36,6 @@ typedef struct {
     char *auth_mode;
     char *management_url;
     char *admin_url;
-    char *profile_name;
     char *username;
     char *hint;
     char *interface_name;
