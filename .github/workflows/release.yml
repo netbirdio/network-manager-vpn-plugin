@@ -52,7 +52,7 @@ jobs:
       - name: Install C editor dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev
 
       - name: Install modules
         run: go mod tidy
@@ -77,13 +77,17 @@ jobs:
             properties/nm-netbird-editor-model.c \
             properties/nm-netbird-editor.c \
             $(pkg-config --cflags --libs libnm gtk+-3.0 libnma)
-          cc -Wall -Wextra \
-            -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0 \
-            -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_0 \
-            -fPIC -shared -o bin/libnm-gtk4-vpn-plugin-netbird-editor.so \
-            properties/nm-netbird-editor-model.c \
-            properties/nm-netbird-editor.c \
-            $(pkg-config --cflags --libs libnm gtk4 libnma-gtk4)
+          if pkg-config --exists gtk4 libnma-gtk4; then
+            cc -Wall -Wextra \
+              -DGDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_0 \
+              -DGDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_0 \
+              -fPIC -shared -o bin/libnm-gtk4-vpn-plugin-netbird-editor.so \
+              properties/nm-netbird-editor-model.c \
+              properties/nm-netbird-editor.c \
+              $(pkg-config --cflags --libs libnm gtk4 libnma-gtk4)
+          else
+            echo "Skipping GTK4 editor build because libnma-gtk4 is not available on this runner"
+          fi
 
       - name: Run properties editor tests
         run: |

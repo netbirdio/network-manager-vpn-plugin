@@ -74,8 +74,12 @@ fi
 if [ -z "$PROPERTIES_GTK4_EDITOR_SRC" ] && [ -f "$SOURCE_ROOT/bin/libnm-gtk4-vpn-plugin-netbird-editor.so" ]; then
   PROPERTIES_GTK4_EDITOR_SRC=$SOURCE_ROOT/bin/libnm-gtk4-vpn-plugin-netbird-editor.so
 fi
-if [ -z "$WITH_GTK4_SPECIFIED" ] && [ -n "$PROPERTIES_GTK4_EDITOR_SRC" ]; then
-  WITH_GTK4=yes
+if [ -z "$WITH_GTK4_SPECIFIED" ]; then
+  if [ -n "$PROPERTIES_GTK4_EDITOR_SRC" ]; then
+    WITH_GTK4=yes
+  elif command -v pkg-config >/dev/null 2>&1 && pkg-config --exists gtk4 libnma-gtk4; then
+    WITH_GTK4=yes
+  fi
 fi
 
 VPN_NAME_SRC=${VPN_NAME_SRC:-$SOURCE_ROOT/packaging/NetworkManager/VPN/nm-netbird-service.name}

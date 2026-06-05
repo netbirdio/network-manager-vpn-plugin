@@ -44,7 +44,7 @@ sudo ./install.sh
 
 The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata. If the tarball does not include prebuilt properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources and requires `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers.
 
-GTK 4 editor support follows NetworkManager-openvpn's opt-in model. To build and install the GTK 4 editor from the tarball, install GTK 4 and libnma-gtk4 development headers and run:
+When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To force GTK 4 editor installation explicitly, run:
 
 ```bash
 sudo WITH_GTK4=yes ./install.sh

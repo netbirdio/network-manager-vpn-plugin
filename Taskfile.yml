@@ -191,3 +191,18 @@ tasks:
     cmds:
       - chmod +x scripts/hooks/pre-commit scripts/install-hooks.sh
       - ./scripts/install-hooks.sh
+
+  install:fedora:
+    desc: Install the application in Fedora (tested on Fedora 44)
+    deps: [build:go, build:properties, build:properties:gtk4]
+    cmds:
+      - |
+        sudo env \
+          SERVICE_SRC="$(pwd)/{{.BIN}}" \
+          AUTH_DIALOG_SRC="$(pwd)/{{.AUTH_DIALOG_BIN}}" \
+          PROPERTIES_PLUGIN_SRC="$(pwd)/{{.PROPERTIES_PLUGIN}}" \
+          PROPERTIES_GTK3_EDITOR_SRC="$(pwd)/{{.PROPERTIES_GTK3_EDITOR}}" \
+          PROPERTIES_GTK4_EDITOR_SRC="$(pwd)/{{.PROPERTIES_GTK4_EDITOR}}" \
+          ./scripts/install-release.sh
+      - sudo pkill -f '/usr/libexec/nm-netbird-service' || true
+      - sudo systemctl restart NetworkManager
