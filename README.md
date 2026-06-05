@@ -11,7 +11,8 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 - NetBird daemon gRPC socket available, by default:
   - `unix:///var/run/netbird.sock`
 - NetworkManager VPN service metadata installed for VPN type `netbird` (packaging target)
-- For the desktop properties editor: libnm, GTK 3, libnma, a C compiler, and `pkg-config` build dependencies; GTK 4 support additionally needs GTK 4 and libnma-gtk4
+- For building the desktop properties editor from source: `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers
+- Optional GTK 4 editor builds additionally require GTK 4 and libnma-gtk4 development headers
 
 For development you can run the service directly on the session bus and use the `Taskfile.yml` D-Bus smoke tasks.
 
@@ -44,7 +45,7 @@ sudo ./install.sh
 
 The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata. If the tarball does not include prebuilt properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources and requires `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers.
 
-When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To force GTK 4 editor installation explicitly, run:
+GTK 4 editor support is optional. When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To require GTK 4 editor installation explicitly, run:
 
 ```bash
 sudo WITH_GTK4=yes ./install.sh
@@ -222,7 +223,7 @@ Desktop NetworkManager frontends can discover the packaged `nm-netbird-auth-dial
 
 ## Desktop profile editor
 
-The packaged libnm editor plugin lets desktop NetworkManager frontends such as GNOME Settings or `nm-connection-editor` create and edit NetBird VPN profiles.
+The packaged libnm editor plugin lets desktop NetworkManager frontends such as GNOME Settings or `nm-connection-editor` create and edit NetBird VPN profiles. The shared loader selects the GTK 3 or GTK 4 editor module at runtime based on the frontend.
 
 The editor writes the same `vpn.data` and `vpn.secrets` keys used by `nmcli`:
 
@@ -238,7 +239,7 @@ The plugin reads keys from NetworkManager `vpn.data` and `vpn.secrets`. Store se
 
 | Key | Aliases | Description |
 | --- | --- | --- |
-| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Values: `setup-key`, `sso`, `login`; omit to reuse daemon auth |
+| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Values: `setup-key` or `sso`; omit to use an existing daemon session. Legacy `login`/`reuse` values are accepted for compatibility but are not exposed by the editor |
 | `setup-key` | `setupKey`, `netbird-setup-key` | NetBird setup key secret |
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login |
