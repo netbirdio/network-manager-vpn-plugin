@@ -181,7 +181,8 @@ func (s *Service) ConnectInteractive(connection ConnectionSettings, details Vari
 // requires NetworkManager secrets for explicitly configured setup-key auth.
 func (s *Service) NeedSecrets(settings ConnectionSettings) (string, *dbus.Error) {
 	s.logf("NeedSecrets(%s)", summarizeSettings(settings))
-	if parseActivationSettings(settings).needsSetupKeySecret() {
+	activationSettings := parseActivationSettings(settings)
+	if activationSettings.needsSetupKeySecret() || activationSettings.needsSSOHintPrompt() {
 		return vpnSettingName, nil
 	}
 	return "", nil
@@ -408,6 +409,11 @@ func (s *Service) runActivation(
 	}
 	ctx, timeoutCancel = s.resetActivationPhaseAfterSSO(activationCtx, ctx, timeoutCancel, waitedForSSO)
 
+	if err := s.updateDaemonProfile(ctx, client, settings); err != nil {
+		s.failActivation(PluginFailureConnectFailed, err)
+		return
+	}
+
 	resolvedProfile, err := profile.Resolve(ctx, client, settings.Profile)
 	if err != nil {
 		s.failActivation(PluginFailureConnectFailed, err)
@@ -514,6 +520,24 @@ func (s *Service) resetActivationPhaseAfterSSO(
 	}
 	currentCancel()
 	return s.activationPhaseContext(activationCtx)
+}
+
+func (s *Service) updateDaemonProfile(ctx context.Context, client daemonclient.Client, settings activationSettings) error {
+	if !settings.shouldUpdateProfile() {
+		return nil
+	}
+
+	features, err := client.GetFeatures(ctx)
+	if err != nil {
+		return fmt.Errorf("check daemon profile update support: %w", err)
+	}
+	if features.DisableUpdateSettings {
+		return nil
+	}
+	if err := client.UpdateProfile(ctx, settings.daemonUpdateProfileRequest()); err != nil {
+		return fmt.Errorf("update daemon profile from NetworkManager settings: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) authenticate(
@@ -732,7 +756,7 @@ func (s *Service) networkManagerConfigMetadata(ctx context.Context, client daemo
 		return interfaceName, gatewayURL
 	}
 	if interfaceName == "" {
-		interfaceName = strings.TrimSpace(config.GetInterfaceName())
+		interfaceName = normalizeInterfaceName(config.GetInterfaceName())
 	}
 	if gatewayURL == "" {
 		gatewayURL = strings.TrimSpace(config.GetManagementUrl())

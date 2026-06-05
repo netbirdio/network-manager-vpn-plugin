@@ -14,6 +14,9 @@ import (
 const (
 	vpnSettingName = "vpn"
 
+	defaultManagementURL = "https://api.netbird.io:443"
+	defaultAdminURL      = "https://app.netbird.io:443"
+
 	netbirdPromptActivationID         = "x-netbird-activation-id"
 	netbirdSSOHint                    = "x-netbird-sso"
 	netbirdSSOVerificationURIHint     = "x-netbird-sso-verification-uri"
@@ -47,14 +50,24 @@ type activationSettings struct {
 
 func parseActivationSettings(settings ConnectionSettings) activationSettings {
 	values := flattenConnectionSettings(settings)
-	profileName := firstSetting(values, "netbird-profile-name", "profile-name", "profileName", "profile")
-	if profileName == "" {
-		profileName = networkManagerConnectionProfileName(settings)
-	}
+	profileName := networkManagerConnectionProfileName(settings)
 
 	username := firstSetting(values, "netbird-username", "username", "user-name", "user")
 	if username == "" && profileName != "" {
 		username = networkManagerConnectionPermissionUsername(settings)
+	}
+
+	interfaceName := normalizeInterfaceName(firstSetting(values, "interface-name", "interfaceName", "netbird-interface-name"))
+	authMode := normalizeAuthMode(firstSetting(values, "auth", "auth-mode", "authentication", "login-mode"))
+	hint := firstSetting(values, "hint", "login-hint", "sso-hint")
+	ssoHint := firstSetting(values, netbirdSSOLoginHint)
+	if authMode == "sso" {
+		if ssoHint == "" {
+			ssoHint = firstSetting(values, "user-name")
+		}
+		if hint == "" {
+			hint = ssoHint
+		}
 	}
 
 	return activationSettings{
@@ -66,23 +79,38 @@ func parseActivationSettings(settings ConnectionSettings) activationSettings {
 		ManagementURL:              firstSetting(values, "management-url", "managementUrl", "netbird-management-url"),
 		AdminURL:                   firstSetting(values, "admin-url", "adminURL", "netbird-admin-url"),
 		Hostname:                   firstSetting(values, "hostname", "host-name"),
-		InterfaceName:              firstSetting(values, "interface-name", "interfaceName", "netbird-interface-name"),
+		InterfaceName:              interfaceName,
 		PreSharedKey:               firstSetting(values, "pre-shared-key", "preshared-key", "preSharedKey"),
-		Hint:                       firstSetting(values, "hint", "login-hint", "sso-hint"),
-		AuthMode:                   normalizeAuthMode(firstSetting(values, "auth", "auth-mode", "authentication", "login-mode")),
+		Hint:                       hint,
+		AuthMode:                   authMode,
 		PromptActivationID:         firstSetting(values, netbirdPromptActivationID),
 		SSORequested:               boolSetting(values, netbirdSSOHint),
 		SSOVerificationURI:         firstSetting(values, netbirdSSOVerificationURIHint),
 		SSOVerificationURIComplete: firstSetting(values, netbirdSSOVerificationURIComplete),
 		SSOUserCode:                firstSetting(values, netbirdSSOUserCodeHint),
-		SSOHint:                    firstSetting(values, netbirdSSOLoginHint),
+		SSOHint:                    ssoHint,
 		SSOContinue:                boolSetting(values, netbirdSSOContinue),
 		SSOCancel:                  boolSetting(values, netbirdSSOCancel),
 	}
 }
 
+func normalizeInterfaceName(value string) string {
+	value = strings.TrimSpace(value)
+	// nmcli uses `ifname --` to mean "no bound device" for VPN profiles, but
+	// stores that placeholder as connection.interface-name. Do not pass it back
+	// to NetworkManager as the daemon tunnel name.
+	if value == "--" {
+		return ""
+	}
+	return value
+}
+
 func (s activationSettings) needsSetupKeySecret() bool {
 	return s.AuthMode == "setup-key" && strings.TrimSpace(s.SetupKey) == ""
+}
+
+func (s activationSettings) needsSSOHintPrompt() bool {
+	return s.AuthMode == "sso" && strings.TrimSpace(s.SSOHint) == ""
 }
 
 func (s activationSettings) shouldLogin(interactive bool) bool {
@@ -99,6 +127,17 @@ func (s activationSettings) shouldLogin(interactive bool) bool {
 	}
 }
 
+func (s activationSettings) shouldUpdateProfile() bool {
+	switch s.AuthMode {
+	case "setup-key", "login", "sso":
+		return true
+	}
+	return strings.TrimSpace(s.ManagementURL) != "" ||
+		strings.TrimSpace(s.AdminURL) != "" ||
+		strings.TrimSpace(s.InterfaceName) != "" ||
+		strings.TrimSpace(s.PreSharedKey) != ""
+}
+
 func (s activationSettings) daemonLoginRequest() daemonclient.LoginRequest {
 	hostname := strings.TrimSpace(s.Hostname)
 	if hostname == "" {
@@ -113,6 +152,24 @@ func (s activationSettings) daemonLoginRequest() daemonclient.LoginRequest {
 		PreSharedKey:  s.PreSharedKey,
 		Profile:       s.Profile,
 		Hint:          s.Hint,
+	}
+}
+
+func (s activationSettings) daemonUpdateProfileRequest() daemonclient.UpdateProfileRequest {
+	managementURL := strings.TrimSpace(s.ManagementURL)
+	if managementURL == "" {
+		managementURL = defaultManagementURL
+	}
+	adminURL := strings.TrimSpace(s.AdminURL)
+	if adminURL == "" {
+		adminURL = defaultAdminURL
+	}
+	return daemonclient.UpdateProfileRequest{
+		Profile:       s.Profile,
+		ManagementURL: managementURL,
+		AdminURL:      adminURL,
+		InterfaceName: s.InterfaceName,
+		PreSharedKey:  s.PreSharedKey,
 	}
 }
 
@@ -147,6 +204,7 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 	}
 	if value := firstSetting(values, netbirdSSOLoginHint); value != "" {
 		settings.SSOHint = value
+		settings.Hint = value
 	}
 	if boolSetting(values, netbirdSSOContinue) {
 		settings.SSOContinue = true

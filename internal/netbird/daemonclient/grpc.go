@@ -213,6 +213,29 @@ func (c *grpcClient) WaitSSOLogin(ctx context.Context, request WaitSSOLoginReque
 	return WaitSSOLoginResponse{Email: resp.GetEmail()}, nil
 }
 
+func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileRequest) error {
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
+
+	req := &daemonproto.SetConfigRequest{
+		Username:      request.Profile.Username,
+		ProfileName:   request.Profile.ProfileName,
+		ManagementUrl: request.ManagementURL,
+		AdminURL:      request.AdminURL,
+	}
+	if request.InterfaceName != "" {
+		req.InterfaceName = stringPtr(request.InterfaceName)
+	}
+	if request.PreSharedKey != "" {
+		req.OptionalPreSharedKey = stringPtr(request.PreSharedKey)
+	}
+	_, err := c.client.SetConfig(ctx, req)
+	if err != nil {
+		return daemonError("update profile", err)
+	}
+	return nil
+}
+
 func (c *grpcClient) Up(ctx context.Context, profile ProfileRef) error {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()

@@ -53,6 +53,7 @@ type Factory interface {
 type Client interface {
 	Login(ctx context.Context, request LoginRequest) (LoginResponse, error)
 	WaitSSOLogin(ctx context.Context, request WaitSSOLoginRequest) (WaitSSOLoginResponse, error)
+	UpdateProfile(ctx context.Context, request UpdateProfileRequest) error
 	Up(ctx context.Context, profile ProfileRef) error
 	Down(ctx context.Context) error
 	Status(ctx context.Context, options StatusOptions) (*daemonproto.StatusResponse, error)
@@ -147,6 +148,17 @@ type WaitSSOLoginRequest struct {
 
 type WaitSSOLoginResponse struct {
 	Email string
+}
+
+// UpdateProfileRequest contains daemon profile settings sourced from the
+// NetworkManager VPN profile. Empty management/admin URLs are interpreted by
+// the plugin before calling UpdateProfile.
+type UpdateProfileRequest struct {
+	Profile       ProfileRef
+	ManagementURL string
+	AdminURL      string
+	InterfaceName string
+	PreSharedKey  string
 }
 
 // StatusOptions controls daemon status calls.

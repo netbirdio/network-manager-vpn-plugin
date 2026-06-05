@@ -124,6 +124,7 @@ type fakeDaemonServer struct {
 
 	mu         sync.Mutex
 	login      *daemonproto.LoginRequest
+	setConfig  *daemonproto.SetConfigRequest
 	up         *daemonproto.UpRequest
 	status     *daemonproto.StatusRequest
 	upErr      error
@@ -139,6 +140,13 @@ func (f *fakeDaemonServer) Login(ctx context.Context, req *daemonproto.LoginRequ
 
 func (f *fakeDaemonServer) WaitSSOLogin(ctx context.Context, req *daemonproto.WaitSSOLoginRequest) (*daemonproto.WaitSSOLoginResponse, error) {
 	return &daemonproto.WaitSSOLoginResponse{Email: "alice@example.com"}, nil
+}
+
+func (f *fakeDaemonServer) SetConfig(ctx context.Context, req *daemonproto.SetConfigRequest) (*daemonproto.SetConfigResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.setConfig = req
+	return &daemonproto.SetConfigResponse{}, nil
 }
 
 func (f *fakeDaemonServer) Up(ctx context.Context, req *daemonproto.UpRequest) (*daemonproto.UpResponse, error) {
