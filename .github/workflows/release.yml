@@ -109,7 +109,7 @@ jobs:
     name: Build snapshot artifacts
     needs: test
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -142,6 +142,14 @@ jobs:
 
       - name: Check git status
         run: git --no-pager diff --exit-code
+
+      - name: Install properties editor dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
+
+      - name: Build properties editor modules
+        run: scripts/build-release-properties.sh
 
       - name: Build snapshot artifacts
         uses: goreleaser/goreleaser-action@v6
@@ -203,7 +211,7 @@ jobs:
     name: Publish release artifacts
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -238,6 +246,14 @@ jobs:
 
       - name: Check git status
         run: git --no-pager diff --exit-code
+
+      - name: Install properties editor dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
+
+      - name: Build properties editor modules
+        run: scripts/build-release-properties.sh
 
       - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6

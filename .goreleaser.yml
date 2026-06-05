@@ -37,6 +37,32 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+  - id: nm-netbird-service-package-amd64
+    main: ./cmd/nm-netbird-service
+    binary: nm-netbird-service
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+  - id: nm-netbird-auth-dialog-package-amd64
+    main: ./cmd/nm-netbird-auth-dialog
+    binary: nm-netbird-auth-dialog
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
 
 archives:
   - id: nm-netbird-service
@@ -83,8 +109,8 @@ archives:
 nfpms:
   - id: linux-packages
     ids:
-      - nm-netbird-service
-      - nm-netbird-auth-dialog
+      - nm-netbird-service-package-amd64
+      - nm-netbird-auth-dialog-package-amd64
     package_name: network-manager-netbird
     vendor: NetBird
     homepage: https://netbird.io
@@ -97,6 +123,12 @@ nfpms:
       - deb
       - rpm
     contents:
+      - src: bin/linux_amd64/libnm-vpn-plugin-netbird.so
+        dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
+      - src: bin/linux_amd64/libnm-vpn-plugin-netbird-editor.so
+        dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so
+      - src: bin/linux_amd64/libnm-gtk4-vpn-plugin-netbird-editor.so
+        dst: /usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so
       - src: packaging/NetworkManager/VPN/nm-netbird-service.name
         dst: /etc/NetworkManager/VPN/nm-netbird-service.name
       - src: packaging/dbus-1/system.d/nm-netbird-service.conf
@@ -112,10 +144,20 @@ nfpms:
         dependencies:
           - network-manager
           - netbird
+          - libnm0
+          - libgtk-3-0
+          - libnma0
+          - libgtk-4-1
+          - libnma-gtk4-0
       rpm:
         dependencies:
           - NetworkManager
           - netbird
+          - NetworkManager-libnm
+          - gtk3
+          - libnma
+          - gtk4
+          - libnma-gtk4
 
 checksum:
   name_template: checksums.txt

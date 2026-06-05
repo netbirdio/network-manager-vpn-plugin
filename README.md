@@ -18,24 +18,140 @@ For development you can run the service directly on the session bus and use the 
 
 ## Install
 
-The preferred distribution model is a distro package. This repository does not ship curl-to-shell installation automation.
+The preferred install path is the native package from the GitHub release. This repository does not ship curl-to-shell installation automation.
 
-Until a project package repository/PPA exists, GitHub releases provide native packages and a manual tarball.
-Install the NetBird daemon/runtime first if your package manager cannot resolve the local package dependency automatically.
+### Ubuntu/Debian quick start
 
-Debian/Ubuntu:
+1. Install NetworkManager, curl, and the NetBird daemon/runtime. If you already configured the NetBird apt repository, this is usually:
+
+   ```bash
+   sudo apt update
+   sudo apt install network-manager curl netbird
+   sudo systemctl enable --now NetworkManager netbird
+   ```
+
+2. Download the latest `.deb` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures. Set `RELEASE=snapshot` instead of `latest` if you want the continuously updated snapshot release:
+
+   ```bash
+   RELEASE=latest
+   ARCH=$(dpkg --print-architecture)
+   case "$ARCH" in
+     amd64) ASSET_ARCH=amd64 ;;
+     *) echo "native packages are currently published for amd64 only; use the tarball fallback on $ARCH" >&2; exit 1 ;;
+   esac
+   API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest"
+   [ "$RELEASE" = latest ] || API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/$RELEASE"
+   PACKAGE_URL=$(curl -fsSL "$API_URL" | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_'"${ASSET_ARCH}"'\.deb' | head -n1)
+   test -n "$PACKAGE_URL"
+   curl -fL "$PACKAGE_URL" -o network-manager-netbird.deb
+   ```
+
+   You can also download `network-manager-netbird_*.deb` manually from the repository's GitHub Releases page.
+
+3. Install the package:
+
+   ```bash
+   sudo apt install ./network-manager-netbird.deb
+   ```
+
+   The package installs the NetworkManager VPN service, D-Bus policy, auth-dialog helper, and unmanaged-interface config for NetBird interfaces. The post-install script reloads D-Bus policy and NetworkManager when possible.
+
+4. Verify that NetworkManager can see the VPN type:
+
+   ```bash
+   nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
+   nmcli connection show NetBird
+   ```
+
+5. Configure one authentication path, then activate the connection. For example, with a setup key:
+
+   ```bash
+   nmcli connection modify NetBird \
+     +vpn.data "auth=setup-key,management-url=https://api.netbird.io,admin-url=https://app.netbird.io"
+   nmcli connection modify NetBird \
+     +vpn.secrets "setup-key=YOUR_SETUP_KEY"
+   nmcli connection up NetBird
+   ```
+
+   For SSO, use the interactive flow instead:
+
+   ```bash
+   nmcli connection modify NetBird +vpn.data "auth=sso,hint=alice@example.com"
+   nmcli connection up NetBird --ask
+   ```
+
+If `vpn-type netbird` is not recognized after package install, restart NetworkManager and try again:
 
 ```bash
-sudo apt install ./network-manager-netbird*.deb
+sudo systemctl restart NetworkManager
 ```
 
-Fedora/RHEL-like distributions:
+### Fedora/RHEL-like distributions
+
+1. Install NetworkManager, curl, and the NetBird daemon/runtime. If you already configured the NetBird dnf/yum repository, this is usually:
+
+   ```bash
+   sudo dnf install NetworkManager curl netbird
+   sudo systemctl enable --now NetworkManager netbird
+   ```
+
+2. Download the latest `.rpm` package. Native `.deb`/`.rpm` packages currently include prebuilt desktop editor modules for amd64/x86_64; use the tarball fallback below on other architectures. Set `RELEASE=snapshot` instead of `latest` if you want the continuously updated snapshot release:
+
+   ```bash
+   RELEASE=latest
+   ARCH=$(uname -m)
+   case "$ARCH" in
+     x86_64) ASSET_ARCH=amd64 ;;
+     *) echo "native packages are currently published for x86_64 only; use the tarball fallback on $ARCH" >&2; exit 1 ;;
+   esac
+   API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest"
+   [ "$RELEASE" = latest ] || API_URL="https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/$RELEASE"
+   PACKAGE_URL=$(curl -fsSL "$API_URL" | grep -Eo 'https://github.com/netbirdio/network-manager-vpn-plugin/releases/download/[^" ]+/network-manager-netbird_[^" ]+_linux_'"${ASSET_ARCH}"'\.rpm' | head -n1)
+   test -n "$PACKAGE_URL"
+   curl -fL "$PACKAGE_URL" -o network-manager-netbird.rpm
+   ```
+
+   You can also download `network-manager-netbird_*.rpm` manually from the repository's GitHub Releases page.
+
+3. Install the package:
+
+   ```bash
+   sudo dnf install ./network-manager-netbird.rpm
+   ```
+
+4. Verify that NetworkManager can see the VPN type:
+
+   ```bash
+   nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
+   nmcli connection show NetBird
+   ```
+
+5. Configure one authentication path, then activate the connection. For example, with a setup key:
+
+   ```bash
+   nmcli connection modify NetBird \
+     +vpn.data "auth=setup-key,management-url=https://api.netbird.io,admin-url=https://app.netbird.io"
+   nmcli connection modify NetBird \
+     +vpn.secrets "setup-key=YOUR_SETUP_KEY"
+   nmcli connection up NetBird
+   ```
+
+   For SSO, use the interactive flow instead:
+
+   ```bash
+   nmcli connection modify NetBird +vpn.data "auth=sso,hint=alice@example.com"
+   nmcli connection up NetBird --ask
+   ```
+
+If `vpn-type netbird` is not recognized after package install, restart NetworkManager and try again:
 
 ```bash
-sudo dnf install ./network-manager-netbird*.rpm
+sudo systemctl restart NetworkManager
 ```
 
-Manual tarball fallback:
+### Manual tarball fallback
+
+Use the tarball on distributions where the native package is not suitable:
 
 ```bash
 tar xf nm-netbird-service_linux_amd64.tar.gz
@@ -43,7 +159,9 @@ cd nm-netbird-service_linux_amd64
 sudo ./install.sh
 ```
 
-The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata. If the tarball does not include prebuilt properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources and requires `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers.
+The tarball also includes `uninstall.sh`. Both scripts accept `DESTDIR` plus path overrides such as `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR` for staging or distro-specific layouts. By default, `NM_VPN_DIR` is `/etc/NetworkManager/VPN`, where NetworkManager discovers local VPN service metadata.
+
+If the tarball does not include prebuilt desktop properties editor modules, `install.sh` builds the libnm loader and GTK 3 editor from bundled C sources when `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers are installed.
 
 GTK 4 editor support is optional. When GTK 4 and libnma-gtk4 development packages are available, the installer also builds and installs the GTK 4 editor unless `WITH_GTK4=no` is set. To require GTK 4 editor installation explicitly, run:
 
@@ -51,30 +169,20 @@ GTK 4 editor support is optional. When GTK 4 and libnma-gtk4 development package
 sudo WITH_GTK4=yes ./install.sh
 ```
 
-Package/manual installs provide:
+### Installed files
+
+Native `.deb`/`.rpm` packages are currently published for amd64/x86_64 and install:
 
 - the `nm-netbird-service` binary in the runtime libexec directory
 - the `nm-netbird-auth-dialog` helper in the runtime libexec directory
 - the `libnm-vpn-plugin-netbird.so` desktop properties loader in the NetworkManager plugin directory
 - the `libnm-vpn-plugin-netbird-editor.so` GTK 3 editor module in the same directory
-- optionally, the `libnm-gtk4-vpn-plugin-netbird-editor.so` GTK 4 editor module in the same directory
+- the `libnm-gtk4-vpn-plugin-netbird-editor.so` GTK 4 editor module in the same directory
 - NetworkManager VPN metadata for VPN type `netbird` in NetworkManager's VPN service directory
 - D-Bus system policy for `org.freedesktop.NetworkManager.netbird`
 - NetworkManager unmanaged-interface config for NetBird-owned interfaces
 
-To install only the properties editor modules from a source checkout:
-
-```bash
-task build:properties
-task build:properties:gtk4 # optional
-
-sudo install -Dm0755 bin/libnm-vpn-plugin-netbird.so \
-  /usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
-sudo install -Dm0755 bin/libnm-vpn-plugin-netbird-editor.so \
-  /usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so
-sudo install -Dm0755 bin/libnm-gtk4-vpn-plugin-netbird-editor.so \
-  /usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so
-```
+The tarball/source installer builds and installs desktop editor modules when the local C build dependencies are available.
 
 The `[libnm]` section in `/etc/NetworkManager/VPN/nm-netbird-service.name` should keep pointing at `/usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so`; that loader selects the GTK 3 or GTK 4 editor module at runtime.
 
