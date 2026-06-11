@@ -37,12 +37,13 @@ const (
 )
 
 const (
-	defaultActivationTimeout  = 90 * time.Second
-	defaultSSOWaitTimeout     = 10 * time.Minute
-	defaultOperationTimeout   = 20 * time.Second
-	defaultReadyPollInterval  = 500 * time.Millisecond
-	defaultStatusPollInterval = 5 * time.Second
-	defaultStatusCallTimeout  = 5 * time.Second
+	defaultActivationTimeout   = 90 * time.Second
+	defaultSSOWaitTimeout      = 10 * time.Minute
+	defaultOperationTimeout    = 20 * time.Second
+	defaultReadyPollInterval   = 500 * time.Millisecond
+	defaultStatusPollInterval  = 5 * time.Second
+	defaultStatusCallTimeout   = 5 * time.Second
+	statusPollFailureThreshold = 3
 )
 
 const (
@@ -59,13 +60,14 @@ var (
 
 // ServiceOptions configures daemon integration behavior.
 type ServiceOptions struct {
-	ClientFactory      daemonclient.Factory
-	ActivationTimeout  time.Duration
-	SSOWaitTimeout     time.Duration
-	OperationTimeout   time.Duration
-	ReadyPollInterval  time.Duration
-	StatusPollInterval time.Duration
-	StatusCallTimeout  time.Duration
+	ClientFactory          daemonclient.Factory
+	ActivationTimeout      time.Duration
+	SSOWaitTimeout         time.Duration
+	OperationTimeout       time.Duration
+	ReadyPollInterval      time.Duration
+	StatusPollInterval     time.Duration
+	StatusCallTimeout      time.Duration
+	BeforeThresholdFailure func()
 }
 
 // Service exports a NetworkManager VPN plugin over D-Bus and controls the
@@ -79,13 +81,14 @@ type Service struct {
 	mu    sync.RWMutex
 	state ServiceState
 
-	clientFactory      daemonclient.Factory
-	activationTimeout  time.Duration
-	ssoWaitTimeout     time.Duration
-	operationTimeout   time.Duration
-	readyPollInterval  time.Duration
-	statusPollInterval time.Duration
-	statusCallTimeout  time.Duration
+	clientFactory          daemonclient.Factory
+	activationTimeout      time.Duration
+	ssoWaitTimeout         time.Duration
+	operationTimeout       time.Duration
+	readyPollInterval      time.Duration
+	statusPollInterval     time.Duration
+	statusCallTimeout      time.Duration
+	beforeThresholdFailure func()
 
 	lifecycleMu      sync.Mutex
 	activating       bool
@@ -120,18 +123,19 @@ func NewService(conn *dbus.Conn, logger *log.Logger, debug bool, options Service
 	options = normalizeServiceOptions(options, logger)
 
 	return &Service{
-		conn:               conn,
-		path:               ObjectPath,
-		logger:             logger,
-		debug:              debug,
-		state:              ServiceStateInit,
-		clientFactory:      options.ClientFactory,
-		activationTimeout:  options.ActivationTimeout,
-		ssoWaitTimeout:     options.SSOWaitTimeout,
-		operationTimeout:   options.OperationTimeout,
-		readyPollInterval:  options.ReadyPollInterval,
-		statusPollInterval: options.StatusPollInterval,
-		statusCallTimeout:  options.StatusCallTimeout,
+		conn:                   conn,
+		path:                   ObjectPath,
+		logger:                 logger,
+		debug:                  debug,
+		state:                  ServiceStateInit,
+		clientFactory:          options.ClientFactory,
+		activationTimeout:      options.ActivationTimeout,
+		ssoWaitTimeout:         options.SSOWaitTimeout,
+		operationTimeout:       options.OperationTimeout,
+		readyPollInterval:      options.ReadyPollInterval,
+		statusPollInterval:     options.StatusPollInterval,
+		statusCallTimeout:      options.StatusCallTimeout,
+		beforeThresholdFailure: options.BeforeThresholdFailure,
 	}
 }
 
@@ -239,7 +243,6 @@ func (s *Service) handleNewSecretsLocked(prompt *activationPrompt, settings acti
 // single daemon engine rather than a profile-scoped instance.
 func (s *Service) Disconnect() *dbus.Error {
 	s.logf("Disconnect()")
-	s.setState(ServiceStateStopping)
 
 	var client daemonclient.Client
 	s.lifecycleMu.Lock()
@@ -257,6 +260,8 @@ func (s *Service) Disconnect() *dbus.Error {
 	s.sessionID++
 	s.activationID++
 	s.lifecycleMu.Unlock()
+
+	s.setState(ServiceStateStopping)
 
 	if client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), s.operationTimeout)
@@ -957,6 +962,7 @@ func (s *Service) monitorStatus(ctx context.Context, client daemonclient.Client,
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	consecutiveFailures := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -964,8 +970,26 @@ func (s *Service) monitorStatus(ctx context.Context, client daemonclient.Client,
 		default:
 		}
 
-		if keepGoing := s.pollDaemonStatus(ctx, client, sessionID); !keepGoing {
+		keepGoing, failed := s.pollDaemonStatus(ctx, client, sessionID)
+		if !keepGoing {
 			return
+		}
+		if failed {
+			consecutiveFailures++
+			if consecutiveFailures >= statusPollFailureThreshold {
+				if ctx.Err() != nil {
+					return
+				}
+				if s.beforeThresholdFailure != nil {
+					s.beforeThresholdFailure()
+				}
+				if !s.failActiveSessionAfterStatusThreshold(sessionID, consecutiveFailures) {
+					return
+				}
+				return
+			}
+		} else {
+			consecutiveFailures = 0
 		}
 
 		select {
@@ -976,7 +1000,7 @@ func (s *Service) monitorStatus(ctx context.Context, client daemonclient.Client,
 	}
 }
 
-func (s *Service) pollDaemonStatus(ctx context.Context, client daemonclient.Client, sessionID uint64) bool {
+func (s *Service) pollDaemonStatus(ctx context.Context, client daemonclient.Client, sessionID uint64) (bool, bool) {
 	callTimeout := s.statusCallTimeout
 	if callTimeout <= 0 {
 		callTimeout = defaultStatusCallTimeout
@@ -985,10 +1009,11 @@ func (s *Service) pollDaemonStatus(ctx context.Context, client daemonclient.Clie
 	resp, err := client.Status(callCtx, daemonclient.StatusOptions{GetFullPeerStatus: true})
 	cancel()
 	if err != nil {
-		if ctx.Err() == nil {
-			s.logger.Printf("netbird status poll failed: %v", err)
+		if ctx.Err() != nil {
+			return false, false
 		}
-		return true
+		s.logger.Printf("netbird status poll failed: %v", err)
+		return true, true
 	}
 
 	mapped := nbstatus.Map(resp)
@@ -1002,13 +1027,48 @@ func (s *Service) pollDaemonStatus(ctx context.Context, client daemonclient.Clie
 	case nbstatus.Disconnected:
 		s.setState(ServiceStateStopped)
 		s.clearActiveSession(sessionID, true)
-		return false
+		return false, false
 	case nbstatus.Failed:
 		s.logger.Printf("netbird daemon reported failure: %s", mapped.Message)
 		_ = s.EmitFailure(PluginFailureConnectFailed)
 		s.setState(ServiceStateStopped)
 		s.clearActiveSession(sessionID, true)
+		return false, false
+	}
+	return true, false
+}
+
+func (s *Service) failActiveSessionAfterStatusThreshold(sessionID uint64, consecutiveFailures int) bool {
+	var client daemonclient.Client
+	var monitorCancel context.CancelFunc
+
+	s.lifecycleMu.Lock()
+	if s.sessionID != sessionID || s.client == nil {
+		s.lifecycleMu.Unlock()
 		return false
+	}
+
+	monitorCancel = s.monitorCancel
+	s.monitorCancel = nil
+	client = s.client
+	s.client = nil
+	s.activeProfile = daemonclient.ProfileRef{}
+	changed := s.setStateValue(ServiceStateStopped)
+
+	if monitorCancel != nil {
+		monitorCancel()
+	}
+	s.logger.Printf("netbird status poll failed %d consecutive times; failing active session", consecutiveFailures)
+	_ = s.EmitFailure(PluginFailureConnectFailed)
+	if changed {
+		s.emitStateChanged(ServiceStateStopped)
+	}
+	s.lifecycleMu.Unlock()
+
+	if client != nil {
+		if err := client.Close(); err != nil {
+			s.logger.Printf("close netbird daemon client: %v", err)
+		}
 	}
 	return true
 }
