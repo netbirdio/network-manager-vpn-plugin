@@ -6,6 +6,46 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
+func TestParseActivationSettingsVPNDataPrecedesDuplicateNonVPNKeys(t *testing.T) {
+	settings := ConnectionSettings{
+		"connection": {
+			"interface-name": dbus.MakeVariant("eth0"),
+		},
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{
+				"interface-name": "wt-netbird",
+			}),
+		},
+	}
+
+	for i := 0; i < 500; i++ {
+		parsed := parseActivationSettings(settings)
+		if parsed.InterfaceName != "wt-netbird" {
+			t.Fatalf("iteration %d: InterfaceName = %q, want vpn.data value", i, parsed.InterfaceName)
+		}
+	}
+}
+
+func TestParseActivationSettingsVPNSecretsPrecedeDuplicateVPNDataKeys(t *testing.T) {
+	settings := ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{
+				"setup-key": "data-secret",
+			}),
+			"secrets": dbus.MakeVariant(map[string]string{
+				"setup-key": "secret-secret",
+			}),
+		},
+	}
+
+	for i := 0; i < 500; i++ {
+		parsed := parseActivationSettings(settings)
+		if parsed.SetupKey != "secret-secret" {
+			t.Fatalf("iteration %d: SetupKey = %q, want vpn.secrets value", i, parsed.SetupKey)
+		}
+	}
+}
+
 func TestParseActivationSettingsNetBirdPromptKeys(t *testing.T) {
 	settings := ConnectionSettings{
 		"vpn": {
