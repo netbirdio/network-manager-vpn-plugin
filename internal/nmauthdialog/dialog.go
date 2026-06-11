@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"strconv"
@@ -247,8 +248,17 @@ func (p *protocolParser) consume(line string) error {
 	case strings.HasPrefix(line, secretValTag):
 		return p.setValue("secrets", strings.TrimPrefix(line, secretValTag))
 	default:
-		return fmt.Errorf("unknown protocol line %q", line)
+		return fmt.Errorf("unknown protocol line with %s", describeProtocolLine(line))
 	}
+}
+
+func describeProtocolLine(line string) string {
+	if tag, _, ok := strings.Cut(line, "="); ok {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			return fmt.Sprintf("tag %q", tag)
+		}
+	}
+	return "unrecognized tag"
 }
 
 func (p *protocolParser) continuePrevious(value string) error {
@@ -347,15 +357,8 @@ func ssoHintRequired(details vpnDetails) bool {
 }
 
 func setupKeyRequirement(hints hintValues, details vpnDetails) (bool, string, error) {
-	for _, hint := range hints.raw {
-		if strings.TrimSpace(hint) == "" || isSetupKeyName(hint) || isSupportedInternalHint(hint) {
-			continue
-		}
-		return false, "", fmt.Errorf("unsupported secret hint %q", hint)
-	}
-
 	authMode := normalizeAuthMode(firstSetting(details.data, keyAuth, "auth-mode", "authentication", "login-mode"))
-	setupKey := firstSetting(details.secrets, keySetupKey, "setupKey", "netbird-setup-key")
+	setupKey := firstSettingPreserveValue(details.secrets, keySetupKey, "setupKey", "netbird-setup-key")
 	if setupKey == "" {
 		setupKey = firstSetting(details.data, keySetupKey, "setupKey", "netbird-setup-key")
 	}
@@ -438,13 +441,24 @@ func isSetupKeyName(value string) bool {
 }
 
 func firstSetting(values map[string]string, keys ...string) string {
+	return firstSettingValue(values, true, keys...)
+}
+
+func firstSettingPreserveValue(values map[string]string, keys ...string) string {
+	return firstSettingValue(values, false, keys...)
+}
+
+func firstSettingValue(values map[string]string, trimValue bool, keys ...string) string {
 	if len(values) == 0 {
 		return ""
 	}
 
 	normalized := make(map[string]string, len(values))
 	for key, value := range values {
-		normalized[normalizeSettingKey(key)] = strings.TrimSpace(value)
+		if trimValue {
+			value = strings.TrimSpace(value)
+		}
+		normalized[normalizeSettingKey(key)] = value
 	}
 	for _, key := range keys {
 		if value := normalized[normalizeSettingKey(key)]; value != "" {
@@ -528,6 +542,9 @@ func writeExternalSetupKey(w io.Writer, hints hintValues, value string, shouldAs
 
 func writeSSOHintPrompt(w io.Writer, opts Options, details vpnDetails) error {
 	value := firstSetting(details.data, "hint", "login-hint", "sso-hint", keyNetBirdSSOHint)
+	if !opts.ExternalUIMode {
+		return errors.New("SSO login hint is required but external UI interaction is unavailable")
+	}
 	if opts.ExternalUIMode {
 		var b strings.Builder
 		writeKeyfileUIHeader(&b, "NetBird SSO", ssoHintPrompt)
@@ -611,16 +628,35 @@ func formatSSODescription(hints hintValues) string {
 	return strings.Join(parts, "\n\n")
 }
 
+var execCommand = exec.Command
+
 func openSSOBrowser(hints hintValues) {
-	uri := firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI))
-	if uri == "" || !hasGraphicalSession() {
+	uri, ok := validateSSOBrowserURI(firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI)))
+	if !ok || !hasGraphicalSession() {
 		return
 	}
-	cmd := exec.Command("xdg-open", uri)
+	cmd := execCommand("xdg-open", uri)
 	cmd.Stdin = strings.NewReader("")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	_ = cmd.Start()
+}
+
+func validateSSOBrowserURI(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return "", false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+		return trimmed, true
+	default:
+		return "", false
+	}
 }
 
 func hasGraphicalSession() bool {
@@ -630,7 +666,7 @@ func hasGraphicalSession() bool {
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
-			return value
+			return strings.TrimSpace(value)
 		}
 	}
 	return ""
@@ -669,18 +705,30 @@ func writeKeyfileEntry(b *strings.Builder, key string, value string, label strin
 
 func escapeKeyfileValue(value string) string {
 	var b strings.Builder
-	for _, r := range value {
-		switch r {
+	leading := true
+	for i := 0; i < len(value); i++ {
+		switch ch := value[i]; ch {
 		case '\\':
+			leading = false
 			b.WriteString("\\\\")
 		case '\n':
+			leading = false
 			b.WriteString("\\n")
 		case '\r':
+			leading = false
 			b.WriteString("\\r")
 		case '\t':
+			leading = false
 			b.WriteString("\\t")
+		case ' ':
+			if leading {
+				b.WriteString("\\s")
+			} else {
+				b.WriteByte(ch)
+			}
 		default:
-			b.WriteRune(r)
+			leading = false
+			b.WriteByte(ch)
 		}
 	}
 	return b.String()
