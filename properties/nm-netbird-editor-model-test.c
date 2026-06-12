@@ -169,6 +169,45 @@ test_validation_rejects_invalid_url_and_interface(void)
     netbird_editor_values_clear(&values);
 }
 
+static void
+assert_interface_validation(const char *interface_name, gboolean expected_valid)
+{
+    NetbirdEditorValues values;
+    GError *error = NULL;
+
+    netbird_editor_values_init(&values);
+    values.interface_name = g_strdup(interface_name);
+
+    g_assert_cmpint(netbird_editor_values_validate(&values, &error), ==, expected_valid);
+    if (expected_valid)
+        g_assert_no_error(error);
+    else {
+        g_assert_error(error, NETBIRD_EDITOR_ERROR, NETBIRD_EDITOR_ERROR_INVALID_INTERFACE);
+        g_clear_error(&error);
+    }
+
+    netbird_editor_values_clear(&values);
+}
+
+static void
+test_validation_accepts_valid_interface_names(void)
+{
+    assert_interface_validation(NULL, TRUE);
+    assert_interface_validation("", TRUE);
+    assert_interface_validation("wt0", TRUE);
+    assert_interface_validation("nb-abcdef123456", TRUE);
+}
+
+static void
+test_validation_rejects_invalid_interface_names(void)
+{
+    assert_interface_validation("1234567890123456", FALSE);
+    assert_interface_validation("bad\x01" "name", FALSE);
+    assert_interface_validation("bad\x7f" "name", FALSE);
+    assert_interface_validation(".", FALSE);
+    assert_interface_validation("..", FALSE);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -179,5 +218,7 @@ main(int argc, char **argv)
     g_test_add_func("/netbird-editor/sso-save", test_sso_saves_hint_and_removes_setup_key);
     g_test_add_func("/netbird-editor/clear-fields", test_empty_fields_remove_known_keys);
     g_test_add_func("/netbird-editor/validation", test_validation_rejects_invalid_url_and_interface);
+    g_test_add_func("/netbird-editor/validation-valid-interfaces", test_validation_accepts_valid_interface_names);
+    g_test_add_func("/netbird-editor/validation-invalid-interfaces", test_validation_rejects_invalid_interface_names);
     return g_test_run();
 }

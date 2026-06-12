@@ -300,8 +300,14 @@ valid_interface_name(const char *value)
     if (is_blank(value))
         return TRUE;
 
+    if (strlen(value) > 15)
+        return FALSE;
+
+    if (g_strcmp0(value, ".") == 0 || g_strcmp0(value, "..") == 0)
+        return FALSE;
+
     for (p = value; *p; p++) {
-        if (*p == '/' || g_ascii_isspace(*p))
+        if (*p == '/' || g_ascii_isspace(*p) || g_ascii_iscntrl(*p))
             return FALSE;
     }
     return TRUE;
@@ -323,7 +329,9 @@ netbird_editor_values_validate(const NetbirdEditorValues *values, GError **error
         return set_validation_error(error, NETBIRD_EDITOR_ERROR_INVALID_URL, "admin-url must be an HTTP or HTTPS URL");
 
     if (!valid_interface_name(values->interface_name))
-        return set_validation_error(error, NETBIRD_EDITOR_ERROR_INVALID_INTERFACE, "interface-name must not contain '/' or whitespace");
+        return set_validation_error(error,
+                                    NETBIRD_EDITOR_ERROR_INVALID_INTERFACE,
+                                    "interface-name must be 15 bytes or less and must not be '.'/'..' or contain '/', whitespace, or control characters");
 
     return TRUE;
 }
