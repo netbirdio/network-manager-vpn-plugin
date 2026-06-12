@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	osuser "os/user"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -217,32 +218,77 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 
 func flattenConnectionSettings(settings ConnectionSettings) map[string]string {
 	values := map[string]string{}
-	for section, sectionValues := range settings {
-		sectionName := normalizeSectionName(section)
-		for key, variant := range sectionValues {
-			mergeConnectionSetting(values, sectionName, key, variant)
-		}
-	}
-	return normalizeStringMap(values)
+
+	// NetworkManager supplies settings as maps, so iterating all sections and
+	// fields directly makes duplicate keys nondeterministic. Merge in explicit
+	// precedence order instead: whitelisted NetworkManager connection fields,
+	// VPN scalar fields, vpn.data, then vpn.secrets. The daemon-facing vpn.data
+	// and vpn.secrets values must win over duplicate keys elsewhere.
+	mergeNonVPNConnectionSettings(values, settings)
+	mergeVPNScalarSettings(values, settings)
+	mergeVPNNestedSettings(values, settings, "data")
+	mergeVPNNestedSettings(values, settings, "secrets")
+
+	return values
 }
 
-func mergeConnectionSetting(values map[string]string, sectionName string, key string, variant dbus.Variant) {
-	keyName := strings.TrimSpace(key)
-	keyKind := normalizeSettingKey(keyName)
-	if sectionName == vpnSettingName && isDataOrSecretsKey(keyKind) {
-		mergeStringMap(values, variantToStringMap(variant))
+func mergeNonVPNConnectionSettings(values map[string]string, settings ConnectionSettings) {
+	for _, section := range sortedSettingSections(settings) {
+		if normalizeSectionName(section) != "connection" {
+			continue
+		}
+		sectionValues := settings[section]
+		for _, key := range sortedVariantKeys(sectionValues) {
+			if !isWhitelistedNonVPNConnectionKey(normalizeSettingKey(key)) {
+				continue
+			}
+			mergeConnectionSetting(values, key, sectionValues[key])
+		}
+	}
+}
+
+func mergeVPNScalarSettings(values map[string]string, settings ConnectionSettings) {
+	for _, section := range sortedSettingSections(settings) {
+		if normalizeSectionName(section) != vpnSettingName {
+			continue
+		}
+		sectionValues := settings[section]
+		for _, key := range sortedVariantKeys(sectionValues) {
+			if isDataOrSecretsKey(normalizeSettingKey(key)) {
+				continue
+			}
+			mergeConnectionSetting(values, key, sectionValues[key])
+		}
+	}
+}
+
+func mergeVPNNestedSettings(values map[string]string, settings ConnectionSettings, nestedKey string) {
+	for _, section := range sortedSettingSections(settings) {
+		if normalizeSectionName(section) != vpnSettingName {
+			continue
+		}
+		sectionValues := settings[section]
+		for _, key := range sortedVariantKeys(sectionValues) {
+			if normalizeSettingKey(key) != nestedKey {
+				continue
+			}
+			mergeStringMap(values, variantToStringMap(sectionValues[key]))
+		}
+	}
+}
+
+func mergeConnectionSetting(values map[string]string, key string, variant dbus.Variant) {
+	keyName := normalizeSettingKey(key)
+	if keyName == "" {
 		return
 	}
-
-	nested := variantToStringMap(variant)
-	if len(nested) > 0 && isDataOrSecretsKey(keyKind) {
-		mergeStringMap(values, nested)
-		return
-	}
-
 	if value, ok := variantToString(variant); ok {
-		values[keyName] = value
+		values[keyName] = strings.TrimSpace(value)
 	}
+}
+
+func isWhitelistedNonVPNConnectionKey(keyKind string) bool {
+	return keyKind == "interfacename"
 }
 
 func isDataOrSecretsKey(keyKind string) bool {
@@ -250,17 +296,48 @@ func isDataOrSecretsKey(keyKind string) bool {
 }
 
 func mergeStringMap(dst map[string]string, src map[string]string) {
-	for key, value := range src {
-		dst[key] = value
+	for _, key := range sortedStringKeys(src) {
+		keyName := normalizeSettingKey(key)
+		if keyName == "" {
+			continue
+		}
+		dst[keyName] = strings.TrimSpace(src[key])
 	}
 }
 
 func normalizeStringMap(values map[string]string) map[string]string {
 	normalized := make(map[string]string, len(values))
-	for key, value := range values {
-		normalized[normalizeSettingKey(key)] = strings.TrimSpace(value)
+	for _, key := range sortedStringKeys(values) {
+		normalized[normalizeSettingKey(key)] = strings.TrimSpace(values[key])
 	}
 	return normalized
+}
+
+func sortedSettingSections(settings ConnectionSettings) []string {
+	sections := make([]string, 0, len(settings))
+	for section := range settings {
+		sections = append(sections, section)
+	}
+	slices.Sort(sections)
+	return sections
+}
+
+func sortedVariantKeys(values map[string]dbus.Variant) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func firstSetting(values map[string]string, keys ...string) string {
