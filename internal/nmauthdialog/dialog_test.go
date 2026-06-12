@@ -2,6 +2,8 @@ package nmauthdialog
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -265,6 +267,118 @@ func TestRunReturnsExistingSetupKey(t *testing.T) {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 	}
 	if stdout.String() != "setup-key\nsecret-123\n\n\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestValidateSSOBrowserURI(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+		ok   bool
+	}{
+		{name: "https", raw: "https://login.netbird.io/device", want: "https://login.netbird.io/device", ok: true},
+		{name: "http", raw: "http://login.netbird.io/device", want: "http://login.netbird.io/device", ok: true},
+		{name: "trim allowed", raw: "  https://login.netbird.io/device  ", want: "https://login.netbird.io/device", ok: true},
+		{name: "file", raw: "file:///tmp/secret", ok: false},
+		{name: "vscode", raw: "vscode://open", ok: false},
+		{name: "javascript", raw: "javascript:alert(1)", ok: false},
+		{name: "bare path", raw: "/tmp/secret", ok: false},
+		{name: "no host", raw: "https:login.netbird.io/device", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := validateSSOBrowserURI(tt.raw)
+			if ok != tt.ok || got != tt.want {
+				t.Fatalf("validateSSOBrowserURI(%q) = %q, %v; want %q, %v", tt.raw, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
+		os.Exit(0)
+	}
+
+	t.Setenv("DISPLAY", ":1")
+	oldExecCommand := execCommand
+	t.Cleanup(func() { execCommand = oldExecCommand })
+
+	var calls [][]string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, args...))
+		cmd := exec.Command(os.Args[0], "-test.run=TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI")
+		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
+		return cmd
+	}
+
+	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=file:///tmp/secret"}))
+	if len(calls) != 0 {
+		t.Fatalf("xdg-open invoked for rejected URI: %#v", calls)
+	}
+
+	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=  https://login.netbird.io/device  "}))
+	if len(calls) != 1 {
+		t.Fatalf("xdg-open calls = %#v, want exactly one", calls)
+	}
+	if got := strings.Join(calls[0], " "); got != "xdg-open https://login.netbird.io/device" {
+		t.Fatalf("xdg-open invocation = %q", got)
+	}
+}
+
+func TestRunDoesNotEchoMalformedProtocolSecret(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(baseArgs(), strings.NewReader("SECRET_VALUE=super-secret-token\nDONE\n"), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if strings.Contains(stderr.String(), "super-secret-token") {
+		t.Fatalf("stderr leaked secret value: %q", stderr.String())
+	}
+}
+
+func TestExternalUIEscapesLeadingSpacesAndPreservesInvalidUTF8(t *testing.T) {
+	stdin := "DATA_KEY=auth\n" +
+		"DATA_VAL=setup-key\n" +
+		"SECRET_KEY=setup-key\n" +
+		"SECRET_VAL=  \xffsecret\n" +
+		"DONE\n"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := Run(append(baseArgs(), "--allow-interaction", "--external-ui-mode"), strings.NewReader(stdin), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("Value=\\s\\s\xffsecret\n")) {
+		t.Fatalf("stdout did not preserve escaped leading spaces and invalid byte: %q", stdout.Bytes())
+	}
+}
+
+func TestRunErrorsForStandardModeSSOLoginHintPrompt(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(append(baseArgs(), "--allow-interaction"), strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestRunIgnoresUnknownHints(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(append(baseArgs(), "--hint", "unknown-secret-hint=super-secret-token"), strings.NewReader("DATA_KEY=auth\nDATA_VAL=login\nDONE\n"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	if stdout.String() != "no-secret\ntrue\n\n\n" {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
