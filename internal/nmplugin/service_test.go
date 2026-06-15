@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -41,6 +42,117 @@ func TestService(t *testing.T) {
 	waitForState(t, obj, nmplugin.ServiceStateStarted)
 
 	require.NoError(t, obj.Call(nmplugin.Interface+".Disconnect", 0).Store())
+	assertState(t, obj, nmplugin.ServiceStateStopped)
+}
+
+func TestStatusPollFailuresFailActiveSessionAfterThreshold(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
+		options.StatusPollInterval = 10 * time.Millisecond
+	})
+	signals := watchSignals(t, clientConn, "Failure", "StateChanged")
+
+	fake.mu.Lock()
+	fake.statusErr = errors.New("daemon unavailable")
+	fake.mu.Unlock()
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, nmplugin.ConnectionSettings{}).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	failure := waitForSignal(t, signals, "Failure")
+	require.Equal(t, []interface{}{uint32(nmplugin.PluginFailureConnectFailed)}, failure.Body)
+	requireSignalState(t, signals, nmplugin.ServiceStateStopped)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.True(t, fake.closed)
+}
+
+func TestStatusPollFailureCountResetsAfterSuccessfulPoll(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
+		options.StatusPollInterval = 10 * time.Millisecond
+	})
+	signals := watchSignals(t, clientConn, "Failure")
+
+	fake.mu.Lock()
+	fake.statusErrs = []error{
+		errors.New("first transient failure"),
+		errors.New("second transient failure"),
+		nil,
+		errors.New("first failure after reset"),
+		errors.New("second failure after reset"),
+	}
+	fake.mu.Unlock()
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, nmplugin.ConnectionSettings{}).Store())
+	assertNoSignalUntil(t, signals, 100*time.Millisecond, "Failure")
+	assertState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.False(t, fake.closed)
+}
+
+func TestStatusPollThresholdRaceWithDisconnectDoesNotEmitStaleFailure(t *testing.T) {
+	thresholdReady := make(chan struct{})
+	releaseThreshold := make(chan struct{})
+	var hookOnce sync.Once
+	obj, fake, clientConn := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
+		options.StatusPollInterval = time.Millisecond
+		options.BeforeThresholdFailure = func() {
+			hookOnce.Do(func() { close(thresholdReady) })
+			<-releaseThreshold
+		}
+	})
+	signals := watchSignals(t, clientConn, "Failure")
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, nmplugin.ConnectionSettings{}).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	fake.statusErr = errors.New("daemon unavailable")
+	fake.mu.Unlock()
+
+	select {
+	case <-thresholdReady:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for status threshold race hook")
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Disconnect", 0).Store())
+	close(releaseThreshold)
+
+	assertNoSignalUntil(t, signals, 100*time.Millisecond, "Failure")
+	assertState(t, obj, nmplugin.ServiceStateStopped)
+}
+
+func TestStatusPollContextCancellationDoesNotEmitFailure(t *testing.T) {
+	obj, fake, clientConn := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
+		options.StatusPollInterval = time.Millisecond
+		options.StatusCallTimeout = time.Second
+	})
+	signals := watchSignals(t, clientConn, "Failure")
+	statusStarted := make(chan struct{})
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, nmplugin.ConnectionSettings{}).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	fake.statusErrs = []error{
+		errors.New("first daemon poll failure"),
+		errors.New("second daemon poll failure"),
+	}
+	fake.statusWaitForContext = true
+	fake.statusStarted = statusStarted
+	fake.mu.Unlock()
+
+	select {
+	case <-statusStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for cancellable status poll")
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Disconnect", 0).Store())
+	assertNoSignalUntil(t, signals, 100*time.Millisecond, "Failure")
 	assertState(t, obj, nmplugin.ServiceStateStopped)
 }
 
@@ -1037,6 +1149,41 @@ func waitForSignal(t *testing.T, signals <-chan *dbus.Signal, members ...string)
 	}
 }
 
+func assertNoSignalUntil(t *testing.T, signals <-chan *dbus.Signal, wait time.Duration, members ...string) {
+	t.Helper()
+
+	want := map[string]bool{}
+	for _, member := range members {
+		want[nmplugin.Interface+"."+member] = true
+	}
+
+	deadline := time.After(wait)
+	for {
+		select {
+		case signal := <-signals:
+			if want[signal.Name] {
+				t.Fatalf("unexpected signal %s", signal.Name)
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
+func requireSignalState(t *testing.T, signals <-chan *dbus.Signal, want nmplugin.ServiceState) {
+	t.Helper()
+
+	for {
+		signal := waitForSignal(t, signals, "StateChanged")
+		require.Len(t, signal.Body, 1)
+		state, ok := signal.Body[0].(uint32)
+		require.True(t, ok, "StateChanged body type = %T, want uint32", signal.Body[0])
+		if nmplugin.ServiceState(state) == want {
+			return
+		}
+	}
+}
+
 func activationIDFromSecretsRequired(t *testing.T, signal *dbus.Signal) string {
 	t.Helper()
 	return activationIDFromHints(t, secretsRequiredHints(t, signal))
@@ -1188,12 +1335,16 @@ func (f fakeFactory) NewClient(ctx context.Context) (daemonclient.Client, error)
 type fakeDaemonClient struct {
 	mu sync.Mutex
 
-	loginResponse daemonclient.LoginResponse
-	status        *daemonproto.StatusResponse
-	config        *daemonproto.GetConfigResponse
-	features      daemonclient.Features
-	activeProfile daemonclient.ProfileRef
-	profiles      []daemonclient.Profile
+	loginResponse        daemonclient.LoginResponse
+	status               *daemonproto.StatusResponse
+	statusErr            error
+	statusErrs           []error
+	statusWaitForContext bool
+	statusStarted        chan struct{}
+	config               *daemonproto.GetConfigResponse
+	features             daemonclient.Features
+	activeProfile        daemonclient.ProfileRef
+	profiles             []daemonclient.Profile
 
 	waitSSOStarted   chan struct{}
 	waitSSORelease   chan struct{}
@@ -1270,8 +1421,32 @@ func (f *fakeDaemonClient) Down(ctx context.Context) error {
 
 func (f *fakeDaemonClient) Status(ctx context.Context, options daemonclient.StatusOptions) (*daemonproto.StatusResponse, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.status, nil
+	if len(f.statusErrs) > 0 {
+		err := f.statusErrs[0]
+		f.statusErrs = f.statusErrs[1:]
+		if err != nil {
+			f.mu.Unlock()
+			return nil, err
+		}
+	}
+	if f.statusErr != nil {
+		err := f.statusErr
+		f.mu.Unlock()
+		return nil, err
+	}
+	if f.statusWaitForContext {
+		started := f.statusStarted
+		f.statusStarted = nil
+		f.mu.Unlock()
+		if started != nil {
+			close(started)
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	status := f.status
+	f.mu.Unlock()
+	return status, nil
 }
 
 func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.ProfileRef) (*daemonproto.GetConfigResponse, error) {
