@@ -19,8 +19,8 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
+	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
 	"github.com/netbirdio/network-manager-plugin/internal/nmplugin"
 	"go.uber.org/goleak"
 )
@@ -984,7 +984,7 @@ func TestConnectIgnoresNmcliUnspecifiedIfnamePlaceholder(t *testing.T) {
 	obj, fake, clientConn := newTestingBusObjectWithConn(t)
 
 	fake.mu.Lock()
-	fake.config = &daemonproto.GetConfigResponse{
+	fake.config = &proto.GetConfigResponse{
 		ManagementUrl: "https://192.0.2.11",
 		InterfaceName: "wt-daemon",
 	}
@@ -1024,7 +1024,7 @@ func TestConnectUsesDaemonConfigForNetworkManagerMetadata(t *testing.T) {
 	obj, fake, clientConn := newTestingBusObjectWithConn(t)
 
 	fake.mu.Lock()
-	fake.config = &daemonproto.GetConfigResponse{
+	fake.config = &proto.GetConfigResponse{
 		ManagementUrl: "https://192.0.2.11",
 		InterfaceName: "wt-daemon",
 	}
@@ -1336,12 +1336,12 @@ type fakeDaemonClient struct {
 	mu sync.Mutex
 
 	loginResponse        daemonclient.LoginResponse
-	status               *daemonproto.StatusResponse
+	status               *proto.StatusResponse
 	statusErr            error
 	statusErrs           []error
 	statusWaitForContext bool
 	statusStarted        chan struct{}
-	config               *daemonproto.GetConfigResponse
+	config               *proto.GetConfigResponse
 	features             daemonclient.Features
 	activeProfile        daemonclient.ProfileRef
 	profiles             []daemonclient.Profile
@@ -1361,8 +1361,8 @@ type fakeDaemonClient struct {
 
 func newFakeDaemonClient() *fakeDaemonClient {
 	return &fakeDaemonClient{
-		status: &daemonproto.StatusResponse{Status: "connected", DaemonVersion: "test"},
-		config: &daemonproto.GetConfigResponse{ManagementUrl: "https://192.0.2.10"},
+		status: &proto.StatusResponse{Status: "connected", DaemonVersion: "test"},
+		config: &proto.GetConfigResponse{ManagementUrl: "https://192.0.2.10"},
 	}
 }
 
@@ -1419,7 +1419,7 @@ func (f *fakeDaemonClient) Down(ctx context.Context) error {
 	return nil
 }
 
-func (f *fakeDaemonClient) Status(ctx context.Context, options daemonclient.StatusOptions) (*daemonproto.StatusResponse, error) {
+func (f *fakeDaemonClient) Status(ctx context.Context, options daemonclient.StatusOptions) (*proto.StatusResponse, error) {
 	f.mu.Lock()
 	if len(f.statusErrs) > 0 {
 		err := f.statusErrs[0]
@@ -1449,7 +1449,7 @@ func (f *fakeDaemonClient) Status(ctx context.Context, options daemonclient.Stat
 	return status, nil
 }
 
-func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.ProfileRef) (*daemonproto.GetConfigResponse, error) {
+func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.ProfileRef) (*proto.GetConfigResponse, error) {
 	f.mu.Lock()
 	started := f.getConfigStarted
 	f.getConfigStarted = nil
@@ -1475,7 +1475,7 @@ func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.Profi
 	if config != nil {
 		return config, nil
 	}
-	return &daemonproto.GetConfigResponse{}, nil
+	return &proto.GetConfigResponse{}, nil
 }
 
 func (f *fakeDaemonClient) GetFeatures(ctx context.Context) (daemonclient.Features, error) {

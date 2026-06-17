@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
 	nbstatus "github.com/netbirdio/network-manager-plugin/internal/netbird/status"
 )
 
@@ -21,7 +21,7 @@ type Client interface {
 	GetFeatures(ctx context.Context) (daemonclient.Features, error)
 	GetActiveProfile(ctx context.Context) (daemonclient.ProfileRef, error)
 	ListProfiles(ctx context.Context, username string) ([]daemonclient.Profile, error)
-	Status(ctx context.Context, options daemonclient.StatusOptions) (*daemonproto.StatusResponse, error)
+	Status(ctx context.Context, options daemonclient.StatusOptions) (*proto.StatusResponse, error)
 }
 
 // PrepareActivation normalizes the requested profile before Login/Up. It clears

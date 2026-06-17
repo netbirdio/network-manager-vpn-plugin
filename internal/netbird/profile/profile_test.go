@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
+	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/profile"
 )
 
@@ -42,7 +42,7 @@ func TestResolveActiveMatchingProfile(t *testing.T) {
 func TestResolveActiveConflictingProfile(t *testing.T) {
 	client := fakeProfileClient{
 		active: daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"},
-		status: &daemonproto.StatusResponse{Status: "connected"},
+		status: &proto.StatusResponse{Status: "connected"},
 	}
 	_, err := profile.Resolve(context.Background(), client, daemonclient.ProfileRef{ProfileName: "dev", Username: "alice"})
 	require.Error(t, err)
@@ -52,7 +52,7 @@ func TestResolveActiveConflictingProfile(t *testing.T) {
 func TestResolveAllowsDifferentProfileWhenDaemonIsDisconnected(t *testing.T) {
 	client := fakeProfileClient{
 		active: daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"},
-		status: &daemonproto.StatusResponse{Status: "disconnected"},
+		status: &proto.StatusResponse{Status: "disconnected"},
 	}
 	got, err := profile.Resolve(context.Background(), client, daemonclient.ProfileRef{ProfileName: "dev", Username: "alice"})
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ type fakeProfileClient struct {
 	features daemonclient.Features
 	active   daemonclient.ProfileRef
 	profiles []daemonclient.Profile
-	status   *daemonproto.StatusResponse
+	status   *proto.StatusResponse
 }
 
 func (f fakeProfileClient) GetFeatures(ctx context.Context) (daemonclient.Features, error) {
@@ -85,6 +85,6 @@ func (f fakeProfileClient) ListProfiles(ctx context.Context, username string) ([
 	return f.profiles, nil
 }
 
-func (f fakeProfileClient) Status(ctx context.Context, options daemonclient.StatusOptions) (*daemonproto.StatusResponse, error) {
+func (f fakeProfileClient) Status(ctx context.Context, options daemonclient.StatusOptions) (*proto.StatusResponse, error) {
 	return f.status, nil
 }
