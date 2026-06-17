@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/envconfig"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
@@ -113,7 +113,7 @@ func (f *GRPCFactory) NewClient(ctx context.Context) (Client, error) {
 
 type grpcClient struct {
 	conn       *grpc.ClientConn
-	client     daemonproto.DaemonServiceClient
+	client     proto.DaemonServiceClient
 	rpcTimeout time.Duration
 }
 
@@ -136,7 +136,7 @@ func dial(ctx context.Context, options Options) (*grpcClient, error) {
 	}
 	return &grpcClient{
 		conn:       conn,
-		client:     daemonproto.NewDaemonServiceClient(conn),
+		client:     proto.NewDaemonServiceClient(conn),
 		rpcTimeout: options.RPCTimeout,
 	}, nil
 }
@@ -164,7 +164,7 @@ func (c *grpcClient) Login(ctx context.Context, request LoginRequest) (LoginResp
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	req := &daemonproto.LoginRequest{
+	req := &proto.LoginRequest{
 		SetupKey:            request.SetupKey,
 		ManagementUrl:       request.ManagementURL,
 		AdminURL:            request.AdminURL,
@@ -203,7 +203,7 @@ func (c *grpcClient) WaitSSOLogin(ctx context.Context, request WaitSSOLoginReque
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	resp, err := c.client.WaitSSOLogin(ctx, &daemonproto.WaitSSOLoginRequest{
+	resp, err := c.client.WaitSSOLogin(ctx, &proto.WaitSSOLoginRequest{
 		UserCode: request.UserCode,
 		Hostname: request.Hostname,
 	})
@@ -217,7 +217,7 @@ func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileReq
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	req := &daemonproto.SetConfigRequest{
+	req := &proto.SetConfigRequest{
 		Username:      request.Profile.Username,
 		ProfileName:   request.Profile.ProfileName,
 		ManagementUrl: request.ManagementURL,
@@ -240,7 +240,7 @@ func (c *grpcClient) Up(ctx context.Context, profile ProfileRef) error {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	req := &daemonproto.UpRequest{}
+	req := &proto.UpRequest{}
 	if profile.ProfileName != "" {
 		req.ProfileName = stringPtr(profile.ProfileName)
 	}
@@ -258,18 +258,18 @@ func (c *grpcClient) Down(ctx context.Context) error {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	_, err := c.client.Down(ctx, &daemonproto.DownRequest{})
+	_, err := c.client.Down(ctx, &proto.DownRequest{})
 	if err != nil {
 		return daemonError("down", err)
 	}
 	return nil
 }
 
-func (c *grpcClient) Status(ctx context.Context, options StatusOptions) (*daemonproto.StatusResponse, error) {
+func (c *grpcClient) Status(ctx context.Context, options StatusOptions) (*proto.StatusResponse, error) {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	req := &daemonproto.StatusRequest{
+	req := &proto.StatusRequest{
 		GetFullPeerStatus: options.GetFullPeerStatus,
 		ShouldRunProbes:   options.ShouldRunProbes,
 	}
@@ -283,11 +283,11 @@ func (c *grpcClient) Status(ctx context.Context, options StatusOptions) (*daemon
 	return resp, nil
 }
 
-func (c *grpcClient) GetConfig(ctx context.Context, profile ProfileRef) (*daemonproto.GetConfigResponse, error) {
+func (c *grpcClient) GetConfig(ctx context.Context, profile ProfileRef) (*proto.GetConfigResponse, error) {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	resp, err := c.client.GetConfig(ctx, &daemonproto.GetConfigRequest{
+	resp, err := c.client.GetConfig(ctx, &proto.GetConfigRequest{
 		ProfileName: profile.ProfileName,
 		Username:    profile.Username,
 	})
@@ -301,7 +301,7 @@ func (c *grpcClient) GetFeatures(ctx context.Context) (Features, error) {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	resp, err := c.client.GetFeatures(ctx, &daemonproto.GetFeaturesRequest{})
+	resp, err := c.client.GetFeatures(ctx, &proto.GetFeaturesRequest{})
 	if err != nil {
 		return Features{}, daemonError("get features", err)
 	}
@@ -316,7 +316,7 @@ func (c *grpcClient) GetActiveProfile(ctx context.Context) (ProfileRef, error) {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	resp, err := c.client.GetActiveProfile(ctx, &daemonproto.GetActiveProfileRequest{})
+	resp, err := c.client.GetActiveProfile(ctx, &proto.GetActiveProfileRequest{})
 	if err != nil {
 		return ProfileRef{}, daemonError("get active profile", err)
 	}
@@ -327,7 +327,7 @@ func (c *grpcClient) ListProfiles(ctx context.Context, username string) ([]Profi
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
-	resp, err := c.client.ListProfiles(ctx, &daemonproto.ListProfilesRequest{Username: username})
+	resp, err := c.client.ListProfiles(ctx, &proto.ListProfilesRequest{Username: username})
 	if err != nil {
 		return nil, daemonError("list profiles", err)
 	}

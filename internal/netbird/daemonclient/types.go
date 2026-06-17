@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
+	"github.com/netbirdio/netbird/client/proto"
 )
 
 var (
@@ -56,8 +56,8 @@ type Client interface {
 	UpdateProfile(ctx context.Context, request UpdateProfileRequest) error
 	Up(ctx context.Context, profile ProfileRef) error
 	Down(ctx context.Context) error
-	Status(ctx context.Context, options StatusOptions) (*daemonproto.StatusResponse, error)
-	GetConfig(ctx context.Context, profile ProfileRef) (*daemonproto.GetConfigResponse, error)
+	Status(ctx context.Context, options StatusOptions) (*proto.StatusResponse, error)
+	GetConfig(ctx context.Context, profile ProfileRef) (*proto.GetConfigResponse, error)
 	GetFeatures(ctx context.Context) (Features, error)
 	GetActiveProfile(ctx context.Context) (ProfileRef, error)
 	ListProfiles(ctx context.Context, username string) ([]Profile, error)

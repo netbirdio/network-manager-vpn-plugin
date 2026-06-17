@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/go-openapi/testify/v2/require"
+	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -111,7 +111,7 @@ func startFakeDaemonServer(t *testing.T, daemon *fakeDaemonServer) (string, func
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
-	daemonproto.RegisterDaemonServiceServer(server, daemon)
+	proto.RegisterDaemonServiceServer(server, daemon)
 	go func() {
 		_ = server.Serve(listener)
 	}()
@@ -120,71 +120,71 @@ func startFakeDaemonServer(t *testing.T, daemon *fakeDaemonServer) (string, func
 }
 
 type fakeDaemonServer struct {
-	daemonproto.UnimplementedDaemonServiceServer
+	proto.UnimplementedDaemonServiceServer
 
 	mu         sync.Mutex
-	login      *daemonproto.LoginRequest
-	setConfig  *daemonproto.SetConfigRequest
-	up         *daemonproto.UpRequest
-	status     *daemonproto.StatusRequest
+	login      *proto.LoginRequest
+	setConfig  *proto.SetConfigRequest
+	up         *proto.UpRequest
+	status     *proto.StatusRequest
 	upErr      error
 	downCalled bool
 }
 
-func (f *fakeDaemonServer) Login(ctx context.Context, req *daemonproto.LoginRequest) (*daemonproto.LoginResponse, error) {
+func (f *fakeDaemonServer) Login(ctx context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.login = req
-	return &daemonproto.LoginResponse{NeedsSSOLogin: true, UserCode: "CODE", VerificationURI: "https://login.example.com"}, nil
+	return &proto.LoginResponse{NeedsSSOLogin: true, UserCode: "CODE", VerificationURI: "https://login.example.com"}, nil
 }
 
-func (f *fakeDaemonServer) WaitSSOLogin(ctx context.Context, req *daemonproto.WaitSSOLoginRequest) (*daemonproto.WaitSSOLoginResponse, error) {
-	return &daemonproto.WaitSSOLoginResponse{Email: "alice@example.com"}, nil
+func (f *fakeDaemonServer) WaitSSOLogin(ctx context.Context, req *proto.WaitSSOLoginRequest) (*proto.WaitSSOLoginResponse, error) {
+	return &proto.WaitSSOLoginResponse{Email: "alice@example.com"}, nil
 }
 
-func (f *fakeDaemonServer) SetConfig(ctx context.Context, req *daemonproto.SetConfigRequest) (*daemonproto.SetConfigResponse, error) {
+func (f *fakeDaemonServer) SetConfig(ctx context.Context, req *proto.SetConfigRequest) (*proto.SetConfigResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.setConfig = req
-	return &daemonproto.SetConfigResponse{}, nil
+	return &proto.SetConfigResponse{}, nil
 }
 
-func (f *fakeDaemonServer) Up(ctx context.Context, req *daemonproto.UpRequest) (*daemonproto.UpResponse, error) {
+func (f *fakeDaemonServer) Up(ctx context.Context, req *proto.UpRequest) (*proto.UpResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.up = req
 	if f.upErr != nil {
 		return nil, f.upErr
 	}
-	return &daemonproto.UpResponse{}, nil
+	return &proto.UpResponse{}, nil
 }
 
-func (f *fakeDaemonServer) Down(ctx context.Context, req *daemonproto.DownRequest) (*daemonproto.DownResponse, error) {
+func (f *fakeDaemonServer) Down(ctx context.Context, req *proto.DownRequest) (*proto.DownResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.downCalled = true
-	return &daemonproto.DownResponse{}, nil
+	return &proto.DownResponse{}, nil
 }
 
-func (f *fakeDaemonServer) Status(ctx context.Context, req *daemonproto.StatusRequest) (*daemonproto.StatusResponse, error) {
+func (f *fakeDaemonServer) Status(ctx context.Context, req *proto.StatusRequest) (*proto.StatusResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.status = req
-	return &daemonproto.StatusResponse{Status: "connected", DaemonVersion: "test"}, nil
+	return &proto.StatusResponse{Status: "connected", DaemonVersion: "test"}, nil
 }
 
-func (f *fakeDaemonServer) GetConfig(ctx context.Context, req *daemonproto.GetConfigRequest) (*daemonproto.GetConfigResponse, error) {
-	return &daemonproto.GetConfigResponse{InterfaceName: "wt0"}, nil
+func (f *fakeDaemonServer) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
+	return &proto.GetConfigResponse{InterfaceName: "wt0"}, nil
 }
 
-func (f *fakeDaemonServer) GetFeatures(ctx context.Context, req *daemonproto.GetFeaturesRequest) (*daemonproto.GetFeaturesResponse, error) {
-	return &daemonproto.GetFeaturesResponse{}, nil
+func (f *fakeDaemonServer) GetFeatures(ctx context.Context, req *proto.GetFeaturesRequest) (*proto.GetFeaturesResponse, error) {
+	return &proto.GetFeaturesResponse{}, nil
 }
 
-func (f *fakeDaemonServer) GetActiveProfile(ctx context.Context, req *daemonproto.GetActiveProfileRequest) (*daemonproto.GetActiveProfileResponse, error) {
-	return &daemonproto.GetActiveProfileResponse{ProfileName: "prod", Username: "alice"}, nil
+func (f *fakeDaemonServer) GetActiveProfile(ctx context.Context, req *proto.GetActiveProfileRequest) (*proto.GetActiveProfileResponse, error) {
+	return &proto.GetActiveProfileResponse{ProfileName: "prod", Username: "alice"}, nil
 }
 
-func (f *fakeDaemonServer) ListProfiles(ctx context.Context, req *daemonproto.ListProfilesRequest) (*daemonproto.ListProfilesResponse, error) {
-	return &daemonproto.ListProfilesResponse{Profiles: []*daemonproto.Profile{{Name: "prod", IsActive: true}}}, nil
+func (f *fakeDaemonServer) ListProfiles(ctx context.Context, req *proto.ListProfilesRequest) (*proto.ListProfilesResponse, error) {
+	return &proto.ListProfilesResponse{Profiles: []*proto.Profile{{Name: "prod", IsActive: true}}}, nil
 }

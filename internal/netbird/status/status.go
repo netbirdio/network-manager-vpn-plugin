@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
+	"github.com/netbirdio/netbird/client/proto"
 )
 
 // State is a daemon-oriented connection state independent from D-Bus/NM enums.
@@ -47,7 +47,7 @@ func (m Mapping) Failed() bool { return m.State == Failed }
 // Map converts a daemon StatusResponse into a tolerant state. The daemon status
 // string is intentionally treated as free-form text; fullStatus is used as a
 // fallback and for failure diagnostics when present.
-func Map(resp *daemonproto.StatusResponse) Mapping {
+func Map(resp *proto.StatusResponse) Mapping {
 	if resp == nil {
 		return Mapping{State: Unknown, Message: "daemon returned no status"}
 	}
@@ -104,7 +104,7 @@ func mapStatusString(raw string) State {
 	return Unknown
 }
 
-func mapFullStatus(full *daemonproto.FullStatus, fallbackMessage string) (State, string) {
+func mapFullStatus(full *proto.FullStatus, fallbackMessage string) (State, string) {
 	if full == nil {
 		return Unknown, fallbackMessage
 	}
@@ -122,7 +122,7 @@ func mapFullStatus(full *daemonproto.FullStatus, fallbackMessage string) (State,
 	return Disconnected, fallbackMessage
 }
 
-func fullStatusFailure(full *daemonproto.FullStatus) (string, bool) {
+func fullStatusFailure(full *proto.FullStatus) (string, bool) {
 	if full == nil {
 		return "", false
 	}
@@ -145,21 +145,21 @@ func fullStatusFailure(full *daemonproto.FullStatus) (string, bool) {
 	return "", false
 }
 
-func managementFailureMessage(full *daemonproto.FullStatus) string {
+func managementFailureMessage(full *proto.FullStatus) string {
 	if message := strings.TrimSpace(full.GetManagementState().GetError()); message != "" {
 		return fmt.Sprintf("management connection error: %s", message)
 	}
 	return ""
 }
 
-func signalFailureMessage(full *daemonproto.FullStatus) string {
+func signalFailureMessage(full *proto.FullStatus) string {
 	if message := strings.TrimSpace(full.GetSignalState().GetError()); message != "" {
 		return fmt.Sprintf("signal connection error: %s", message)
 	}
 	return ""
 }
 
-func relayFailureMessage(full *daemonproto.FullStatus) string {
+func relayFailureMessage(full *proto.FullStatus) string {
 	for _, relay := range full.GetRelays() {
 		if message := strings.TrimSpace(relay.GetError()); message != "" {
 			return fmt.Sprintf("relay %s error: %s", relay.GetURI(), message)
@@ -168,7 +168,7 @@ func relayFailureMessage(full *daemonproto.FullStatus) string {
 	return ""
 }
 
-func dnsFailureMessage(full *daemonproto.FullStatus) string {
+func dnsFailureMessage(full *proto.FullStatus) string {
 	for _, group := range full.GetDnsServers() {
 		if message := strings.TrimSpace(group.GetError()); message != "" {
 			return fmt.Sprintf("dns server error: %s", message)
@@ -177,7 +177,7 @@ func dnsFailureMessage(full *daemonproto.FullStatus) string {
 	return ""
 }
 
-func systemEventFailureMessage(full *daemonproto.FullStatus) string {
+func systemEventFailureMessage(full *proto.FullStatus) string {
 	for _, event := range full.GetEvents() {
 		if !isFailureEvent(event) {
 			continue
@@ -192,9 +192,9 @@ func systemEventFailureMessage(full *daemonproto.FullStatus) string {
 	return ""
 }
 
-func isFailureEvent(event *daemonproto.SystemEvent) bool {
+func isFailureEvent(event *proto.SystemEvent) bool {
 	switch event.GetSeverity() {
-	case daemonproto.SystemEvent_ERROR, daemonproto.SystemEvent_CRITICAL:
+	case proto.SystemEvent_ERROR, proto.SystemEvent_CRITICAL:
 		return true
 	default:
 		return false

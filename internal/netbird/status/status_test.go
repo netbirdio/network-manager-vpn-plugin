@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
-	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonproto"
+	"github.com/netbirdio/netbird/client/proto"
 	nbstatus "github.com/netbirdio/network-manager-plugin/internal/netbird/status"
 )
 
@@ -25,26 +25,26 @@ func TestMapStatusStrings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := nbstatus.Map(&daemonproto.StatusResponse{Status: tt.raw})
+			got := nbstatus.Map(&proto.StatusResponse{Status: tt.raw})
 			require.Equal(t, tt.want, got.State)
 		})
 	}
 }
 
 func TestMapFullStatusFallback(t *testing.T) {
-	got := nbstatus.Map(&daemonproto.StatusResponse{FullStatus: &daemonproto.FullStatus{
-		ManagementState: &daemonproto.ManagementState{Connected: true},
-		SignalState:     &daemonproto.SignalState{Connected: true},
-		LocalPeerState:  &daemonproto.LocalPeerState{IP: "100.64.0.1"},
+	got := nbstatus.Map(&proto.StatusResponse{FullStatus: &proto.FullStatus{
+		ManagementState: &proto.ManagementState{Connected: true},
+		SignalState:     &proto.SignalState{Connected: true},
+		LocalPeerState:  &proto.LocalPeerState{IP: "100.64.0.1"},
 	}})
 	require.Equal(t, nbstatus.Connected, got.State)
 }
 
 func TestMapFullStatusFailure(t *testing.T) {
-	got := nbstatus.Map(&daemonproto.StatusResponse{
+	got := nbstatus.Map(&proto.StatusResponse{
 		Status: "connecting",
-		FullStatus: &daemonproto.FullStatus{
-			ManagementState: &daemonproto.ManagementState{Error: "no route to host"},
+		FullStatus: &proto.FullStatus{
+			ManagementState: &proto.ManagementState{Error: "no route to host"},
 		},
 	})
 	require.Equal(t, nbstatus.Failed, got.State)
