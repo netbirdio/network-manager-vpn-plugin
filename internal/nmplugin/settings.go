@@ -117,13 +117,16 @@ func (s activationSettings) shouldUpdateProfile() bool {
 		strings.TrimSpace(s.PreSharedKey) != ""
 }
 
-func (s activationSettings) validateAuthMode() error {
-	switch s.AuthMode {
-	case "setup-key", "sso":
-		return nil
-	default:
-		return fmt.Errorf("unsupported auth mode %q (must be setup-key or sso)", s.AuthMode)
+func (s activationSettings) isAuthModeValid() bool {
+	if s.AuthMode == "" {
+		return false
 	}
+
+	if s.AuthMode != "setup-key" && s.AuthMode != "sso" {
+		return false
+	}
+
+	return true
 }
 
 func (s activationSettings) daemonLoginRequest() daemonclient.LoginRequest {
@@ -170,31 +173,24 @@ func (s activationSettings) resolvedAdminURL() string {
 	return defaultAdminURL
 }
 
-func mergeActivationDetails(settings activationSettings, details VariantMap) activationSettings {
+func (s activationSettings) mergeDetails(details VariantMap) activationSettings {
 	if len(details) == 0 {
-		return settings
+		return s
 	}
+
+	settings := s // copy to avoid mutating the original
 	values := normalizeStringMap(variantMapToStrings(details))
+
 	if value := firstSetting(values, "auth", "auth-mode", "authentication", "login-mode"); value != "" {
 		settings.AuthMode = normalizeAuthMode(value)
 	}
-	if value := firstSetting(values, "setup-key", "setupKey", "netbird-setup-key"); value != "" {
-		settings.SetupKey = value
-	}
-	if value := firstSetting(values, netbirdPromptActivationID); value != "" {
-		settings.PromptActivationID = value
-	}
+	mergeStringDetail(values, &settings.SetupKey, "setup-key", "setupKey", "netbird-setup-key")
+	mergeStringDetail(values, &settings.PromptActivationID, netbirdPromptActivationID)
+	mergeStringDetail(values, &settings.SSOVerificationURI, netbirdSSOVerificationURIHint)
+	mergeStringDetail(values, &settings.SSOVerificationURIComplete, netbirdSSOVerificationURIComplete)
+	mergeStringDetail(values, &settings.SSOUserCode, netbirdSSOUserCodeHint)
 	if boolSetting(values, netbirdSSOHint) {
 		settings.SSORequested = true
-	}
-	if value := firstSetting(values, netbirdSSOVerificationURIHint); value != "" {
-		settings.SSOVerificationURI = value
-	}
-	if value := firstSetting(values, netbirdSSOVerificationURIComplete); value != "" {
-		settings.SSOVerificationURIComplete = value
-	}
-	if value := firstSetting(values, netbirdSSOUserCodeHint); value != "" {
-		settings.SSOUserCode = value
 	}
 	if boolSetting(values, netbirdSSOContinue) {
 		settings.SSOContinue = true
@@ -202,7 +198,14 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 	if boolSetting(values, netbirdSSOCancel) {
 		settings.SSOCancel = true
 	}
+
 	return settings
+}
+
+func mergeStringDetail(values map[string]string, field *string, keys ...string) {
+	if value := firstSetting(values, keys...); value != "" {
+		*field = value
+	}
 }
 
 func flattenConnectionSettings(settings ConnectionSettings) map[string]string {
@@ -213,61 +216,68 @@ func flattenConnectionSettings(settings ConnectionSettings) map[string]string {
 	// precedence order instead: whitelisted NetworkManager connection fields,
 	// VPN scalar fields, vpn.data, then vpn.secrets. The daemon-facing vpn.data
 	// and vpn.secrets values must win over duplicate keys elsewhere.
-	mergeNonVPNConnectionSettings(values, settings)
-	mergeVPNScalarSettings(values, settings)
-	mergeVPNNestedSettings(values, settings, "data")
-	mergeVPNNestedSettings(values, settings, "secrets")
+	for _, setting := range sortedSectionSettings(settings, "connection") {
+		if setting.keyKind == "interfacename" {
+			mergeScalarSetting(values, setting.keyKind, setting.variant)
+		}
+	}
+
+	vpnSettings := sortedSectionSettings(settings, vpnSettingName)
+	for _, setting := range vpnSettings {
+		if setting.keyKind == "data" || setting.keyKind == "secrets" {
+			continue
+		}
+		mergeScalarSetting(values, setting.keyKind, setting.variant)
+	}
+
+	for _, nestedKey := range []string{"data", "secrets"} {
+		for _, setting := range vpnSettings {
+			if setting.keyKind != nestedKey {
+				continue
+			}
+			mergeNormalizedStringMap(values, variantToStringMap(setting.variant))
+		}
+	}
 
 	return values
 }
 
-func mergeNonVPNConnectionSettings(values map[string]string, settings ConnectionSettings) {
-	for _, section := range sortedSettingSections(settings) {
-		if normalizeSectionName(section) != "connection" {
-			continue
-		}
-		sectionValues := settings[section]
-		for _, key := range sortedVariantKeys(sectionValues) {
-			if !isWhitelistedNonVPNConnectionKey(normalizeSettingKey(key)) {
-				continue
-			}
-			mergeConnectionSetting(values, key, sectionValues[key])
-		}
-	}
+type settingEntry struct {
+	keyKind string
+	variant dbus.Variant
 }
 
-func mergeVPNScalarSettings(values map[string]string, settings ConnectionSettings) {
-	for _, section := range sortedSettingSections(settings) {
-		if normalizeSectionName(section) != vpnSettingName {
+func sortedSectionSettings(settings ConnectionSettings, sectionName string) []settingEntry {
+	sections := make([]string, 0, len(settings))
+	for section := range settings {
+		sections = append(sections, section)
+	}
+	slices.Sort(sections)
+
+	entries := []settingEntry{}
+	for _, section := range sections {
+		if normalizeSectionName(section) != sectionName {
 			continue
 		}
+
 		sectionValues := settings[section]
-		for _, key := range sortedVariantKeys(sectionValues) {
-			if isDataOrSecretsKey(normalizeSettingKey(key)) {
-				continue
-			}
-			mergeConnectionSetting(values, key, sectionValues[key])
+		keys := make([]string, 0, len(sectionValues))
+		for key := range sectionValues {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+
+		for _, key := range keys {
+			entries = append(entries, settingEntry{
+				keyKind: normalizeSettingKey(key),
+				variant: sectionValues[key],
+			})
 		}
 	}
+	return entries
 }
 
-func mergeVPNNestedSettings(values map[string]string, settings ConnectionSettings, nestedKey string) {
-	for _, section := range sortedSettingSections(settings) {
-		if normalizeSectionName(section) != vpnSettingName {
-			continue
-		}
-		sectionValues := settings[section]
-		for _, key := range sortedVariantKeys(sectionValues) {
-			if normalizeSettingKey(key) != nestedKey {
-				continue
-			}
-			mergeStringMap(values, variantToStringMap(sectionValues[key]))
-		}
-	}
-}
-
-func mergeConnectionSetting(values map[string]string, key string, variant dbus.Variant) {
-	keyName := normalizeSettingKey(key)
+func mergeScalarSetting(values map[string]string, keyName string, variant dbus.Variant) {
 	if keyName == "" {
 		return
 	}
@@ -276,16 +286,14 @@ func mergeConnectionSetting(values map[string]string, key string, variant dbus.V
 	}
 }
 
-func isWhitelistedNonVPNConnectionKey(keyKind string) bool {
-	return keyKind == "interfacename"
-}
+func mergeNormalizedStringMap(dst map[string]string, src map[string]string) {
+	keys := make([]string, 0, len(src))
+	for key := range src {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
 
-func isDataOrSecretsKey(keyKind string) bool {
-	return keyKind == "data" || keyKind == "secrets"
-}
-
-func mergeStringMap(dst map[string]string, src map[string]string) {
-	for _, key := range sortedStringKeys(src) {
+	for _, key := range keys {
 		keyName := normalizeSettingKey(key)
 		if keyName == "" {
 			continue
@@ -296,37 +304,8 @@ func mergeStringMap(dst map[string]string, src map[string]string) {
 
 func normalizeStringMap(values map[string]string) map[string]string {
 	normalized := make(map[string]string, len(values))
-	for _, key := range sortedStringKeys(values) {
-		normalized[normalizeSettingKey(key)] = strings.TrimSpace(values[key])
-	}
+	mergeNormalizedStringMap(normalized, values)
 	return normalized
-}
-
-func sortedSettingSections(settings ConnectionSettings) []string {
-	sections := make([]string, 0, len(settings))
-	for section := range settings {
-		sections = append(sections, section)
-	}
-	slices.Sort(sections)
-	return sections
-}
-
-func sortedVariantKeys(values map[string]dbus.Variant) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	return keys
-}
-
-func sortedStringKeys(values map[string]string) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	return keys
 }
 
 func firstSetting(values map[string]string, keys ...string) string {
