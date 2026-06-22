@@ -103,6 +103,7 @@ need_cmd grep
 need_cmd cut
 need_cmd head
 need_cmd mktemp
+need_cmd awk
 
 if [ "$RELEASE_TAG" = latest ]; then
   release_api="https://api.github.com/repos/$REPO/releases/latest"
@@ -121,19 +122,38 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 log "Resolving $RELEASE_TAG network-manager-netbird .$package_ext package..."
-asset_url=$(curl -fsSL "$release_api" |
-  grep '"browser_download_url":' |
+release_json="$tmpdir/release.json"
+curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 -o "$release_json" "$release_api"
+
+asset_url=$(grep '"browser_download_url":' "$release_json" |
   grep -E "network-manager-netbird.*(_linux_amd64|_amd64|\\.x86_64)\\.$package_ext\"" |
+  cut -d '"' -f 4 |
+  head -n 1)
+checksum_url=$(grep '"browser_download_url":' "$release_json" |
+  grep -E 'checksums\.txt"' |
   cut -d '"' -f 4 |
   head -n 1)
 
 if [ -z "$asset_url" ]; then
   die "could not find an amd64 .$package_ext asset in $release_api"
 fi
+if [ -z "$checksum_url" ]; then
+  die "could not find checksums.txt in $release_api"
+fi
 
-package_path="$tmpdir/network-manager-netbird.$package_ext"
+asset_name=${asset_url##*/}
+package_path="$tmpdir/$asset_name"
 log "Downloading $asset_url..."
-curl -fL -o "$package_path" "$asset_url"
+curl -fL --retry 3 --connect-timeout 10 --max-time 300 -o "$package_path" "$asset_url"
+
+need_cmd sha256sum
+sums_path="$tmpdir/checksums.txt"
+log "Verifying $asset_name..."
+curl -fL --retry 3 --connect-timeout 10 --max-time 60 -o "$sums_path" "$checksum_url"
+checksum_line=$(awk -v file="$asset_name" '$2 == file { print; found = 1; exit } END { if (!found) exit 1 }' "$sums_path") || \
+  die "checksum for $asset_name not found in checksums.txt"
+printf '%s\n' "$checksum_line" | (cd "$tmpdir" && sha256sum -c -) || \
+  die "checksum verification failed for $asset_name"
 
 log "Enabling NetworkManager..."
 enable_networkmanager

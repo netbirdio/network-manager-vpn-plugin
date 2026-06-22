@@ -46,22 +46,42 @@ func TestParseActivationSettingsVPNSecretsPrecedeDuplicateVPNDataKeys(t *testing
 	}
 }
 
-func TestParseActivationSettingsDefaultsMissingAuthToSSO(t *testing.T) {
-	parsed := parseActivationSettings(ConnectionSettings{})
-	if parsed.AuthMode != "sso" {
-		t.Fatalf("AuthMode = %q, want sso", parsed.AuthMode)
-	}
-}
-
 func TestParseActivationSettingsNormalizesLegacyAuthToSSO(t *testing.T) {
-	settings := ConnectionSettings{
-		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{"auth": "reuse"}),
+	tests := []struct {
+		name     string
+		settings ConnectionSettings
+	}{
+		{
+			name:     "missing auth",
+			settings: ConnectionSettings{},
+		},
+		{
+			name: "legacy login",
+			settings: ConnectionSettings{
+				"vpn": {"data": dbus.MakeVariant(map[string]string{"auth": "login"})},
+			},
+		},
+		{
+			name: "legacy force login",
+			settings: ConnectionSettings{
+				"vpn": {"data": dbus.MakeVariant(map[string]string{"auth": "force-login"})},
+			},
+		},
+		{
+			name: "legacy reuse",
+			settings: ConnectionSettings{
+				"vpn": {"data": dbus.MakeVariant(map[string]string{"auth": "reuse"})},
+			},
 		},
 	}
-	parsed := parseActivationSettings(settings)
-	if parsed.AuthMode != "sso" {
-		t.Fatalf("AuthMode = %q, want sso", parsed.AuthMode)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed := parseActivationSettings(tt.settings)
+			if parsed.AuthMode != "sso" {
+				t.Fatalf("AuthMode = %q, want sso", parsed.AuthMode)
+			}
+		})
 	}
 }
 

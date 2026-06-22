@@ -52,7 +52,7 @@ sudo apt update
 sudo apt install network-manager curl
 sudo systemctl enable --now NetworkManager
 
-curl -fL -o network-manager-netbird_linux_amd64.deb "$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest | grep '"browser_download_url":' | grep 'network-manager-netbird_.*_linux_amd64\.deb' | cut -d '"' -f 4)"
+curl -fL -o network-manager-netbird_linux_amd64.deb "$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest | grep '"browser_download_url":' | grep -E 'network-manager-netbird.*(_linux_amd64|_amd64|\.x86_64)\.deb"' | cut -d '"' -f 4 | head -n 1)"
 sudo apt install ./network-manager-netbird_linux_amd64.deb
 ```
 
@@ -65,8 +65,9 @@ sudo systemctl enable --now NetworkManager
 RELEASE_API=https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest
 asset_url="$(curl -fsSL "$RELEASE_API" |
   grep '"browser_download_url":' |
-  grep 'network-manager-netbird_.*_linux_amd64\.rpm' |
-  cut -d '"' -f 4)"
+  grep -E 'network-manager-netbird.*(_linux_amd64|_amd64|\.x86_64)\.rpm"' |
+  cut -d '"' -f 4 |
+  head -n 1)"
 curl -fL -o network-manager-netbird_linux_amd64.rpm "$asset_url"
 sudo dnf install ./network-manager-netbird_linux_amd64.rpm
 ```

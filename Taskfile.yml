@@ -19,6 +19,14 @@ tasks:
       - |
         bash -euo pipefail <<'SH'
         with_gtk4="${WITH_GTK4:-0}"
+        as_root() {
+          if [ "$(id -u)" -eq 0 ]; then
+            "$@"
+          else
+            command -v sudo >/dev/null 2>&1 || { echo "error: sudo is required when not running as root" >&2; exit 1; }
+            sudo "$@"
+          fi
+        }
         is_enabled() {
           case "$1" in
             1|true|TRUE|yes|YES|on|ON) return 0 ;;
@@ -40,8 +48,8 @@ tasks:
           if is_enabled "$with_gtk4"; then
             packages+=(libgtk-4-dev libnma-gtk4-dev)
           fi
-          sudo apt-get update
-          sudo apt-get install -y "${packages[@]}"
+          as_root apt-get update
+          as_root apt-get install -y "${packages[@]}"
         elif command -v pacman >/dev/null 2>&1; then
           packages=(
             base-devel
@@ -58,7 +66,7 @@ tasks:
               packages+=(libnma-gtk4)
             fi
           fi
-          sudo pacman -Syu --needed "${packages[@]}"
+          as_root pacman -Syu --needed "${packages[@]}"
         elif command -v dnf >/dev/null 2>&1; then
           packages=(
             gcc
@@ -73,7 +81,7 @@ tasks:
           if is_enabled "$with_gtk4"; then
             packages+=(gtk4-devel libnma-gtk4-devel)
           fi
-          sudo dnf install -y "${packages[@]}"
+          as_root dnf install -y "${packages[@]}"
         elif command -v yum >/dev/null 2>&1; then
           packages=(
             gcc
@@ -88,7 +96,7 @@ tasks:
           if is_enabled "$with_gtk4"; then
             packages+=(gtk4-devel libnma-gtk4-devel)
           fi
-          sudo yum install -y "${packages[@]}"
+          as_root yum install -y "${packages[@]}"
         else
           echo "error: supported package manager not found (apt-get, pacman, dnf, or yum)" >&2
           exit 1

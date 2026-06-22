@@ -6,7 +6,7 @@ How the NetworkManager NetBird VPN plugin works, why it works that way, and what
 
 The plugin is a D-Bus service that NetworkManager calls to start and stop VPN connections. It does **not** configure IP addresses, routes, DNS, or firewall rules. All of that remains the NetBird daemon's responsibility. The plugin's only job is to translate NetworkManager's VPN lifecycle (`Connect` → `Disconnect`) into NetBird daemon gRPC calls (`Up` → `Down`).
 
-```
+```txt
 ┌───────────────┐  D-Bus    ┌──────────────┐  gRPC    ┌──────────────┐
 │ NetworkManager│ ◄──────►  │ nm-netbird-  │ ◄─────►  │  netbird     │
 │               │           │  service     │          │  daemon      │
@@ -147,7 +147,7 @@ The plugin communicates with the NetBird daemon over a local gRPC socket (`unix:
 
 The desktop properties editor uses NetworkManager's standard split-loader pattern:
 
-```
+```txt
 nm-connection-editor / GNOME Settings
         │
         ▼
