@@ -183,9 +183,6 @@ func (c *grpcClient) Login(ctx context.Context, request LoginRequest) (LoginResp
 	if request.Profile.Username != "" {
 		req.Username = new(request.Profile.Username)
 	}
-	if request.Hint != "" {
-		req.Hint = new(request.Hint)
-	}
 
 	resp, err := c.client.Login(ctx, req)
 	if err != nil {

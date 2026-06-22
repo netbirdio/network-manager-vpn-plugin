@@ -205,58 +205,12 @@ func TestNeedSecretsForSetupKeyProfile(t *testing.T) {
 	require.Equal(t, "vpn", settingName)
 }
 
-func TestNeedSecretsForSSOProfileWithoutHint(t *testing.T) {
+func TestNeedSecretsForSSOProfileDoesNotPrompt(t *testing.T) {
 	obj, _ := newTestingBusObject(t)
 
 	settings := nmplugin.ConnectionSettings{
 		"vpn": {
 			"data": dbus.MakeVariant(map[string]string{"auth": "sso"}),
-		},
-	}
-
-	var settingName string
-	require.NoError(t, obj.Call(nmplugin.Interface+".NeedSecrets", 0, settings).Store(&settingName))
-	require.Equal(t, "vpn", settingName)
-}
-
-func TestNeedSecretsForSSOProfileWithHintStillPrompts(t *testing.T) {
-	obj, _ := newTestingBusObject(t)
-
-	settings := nmplugin.ConnectionSettings{
-		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{"auth": "sso", "hint": "alice@example.com"}),
-		},
-	}
-
-	var settingName string
-	require.NoError(t, obj.Call(nmplugin.Interface+".NeedSecrets", 0, settings).Store(&settingName))
-	require.Equal(t, "vpn", settingName)
-}
-
-func TestNeedSecretsForSSOProfileWithSubmittedUserNameDoesNotPromptAgain(t *testing.T) {
-	obj, _ := newTestingBusObject(t)
-
-	settings := nmplugin.ConnectionSettings{
-		"vpn": {
-			"data":      dbus.MakeVariant(map[string]string{"auth": "sso"}),
-			"user-name": dbus.MakeVariant("alice@example.com"),
-		},
-	}
-
-	var settingName string
-	require.NoError(t, obj.Call(nmplugin.Interface+".NeedSecrets", 0, settings).Store(&settingName))
-	require.Empty(t, settingName)
-}
-
-func TestNeedSecretsForSSOProfileWithSubmittedHintDoesNotPromptAgain(t *testing.T) {
-	obj, _ := newTestingBusObject(t)
-
-	settings := nmplugin.ConnectionSettings{
-		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{
-				"auth":               "sso",
-				"x-netbird-sso-hint": "alice@example.com",
-			}),
 		},
 	}
 
@@ -719,7 +673,7 @@ func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
 
 	settings := nmplugin.ConnectionSettings{
 		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{"auth": "sso", "hint": "alice@example.com"}),
+			"data": dbus.MakeVariant(map[string]string{"auth": "sso"}),
 		},
 	}
 
@@ -740,10 +694,10 @@ func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
 		case nmplugin.Interface + ".SecretsRequired":
 			hints := secretsRequiredHints(t, signal)
 			require.Contains(t, hints, "x-netbird-sso=true")
+			require.Contains(t, hints, "x-netbird-sso-continue")
 			require.Contains(t, hints, "x-netbird-sso-verification-uri=https://login.netbird.io/device")
 			require.Contains(t, hints, "x-netbird-sso-verification-uri-complete=https://login.netbird.io/device?user_code=ABCD-EFGH")
 			require.Contains(t, hints, "x-netbird-sso-user-code=ABCD-EFGH")
-			require.Contains(t, hints, "x-netbird-sso-hint=alice@example.com")
 			require.NotEmpty(t, activationIDFromHints(t, hints))
 			sawPrompt = true
 		}

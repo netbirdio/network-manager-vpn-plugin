@@ -47,13 +47,6 @@ static const char *const username_keys[] = {
     NULL,
 };
 
-static const char *const hint_keys[] = {
-    NETBIRD_KEY_HINT,
-    "login-hint",
-    "sso-hint",
-    NULL,
-};
-
 static const char *const interface_name_keys[] = {
     NETBIRD_KEY_INTERFACE_NAME,
     "interfaceName",
@@ -98,7 +91,6 @@ netbird_editor_values_clear(NetbirdEditorValues *values)
     g_clear_pointer(&values->management_url, g_free);
     g_clear_pointer(&values->admin_url, g_free);
     g_clear_pointer(&values->username, g_free);
-    g_clear_pointer(&values->hint, g_free);
     g_clear_pointer(&values->interface_name, g_free);
     g_clear_pointer(&values->hostname, g_free);
     g_clear_pointer(&values->setup_key, g_free);
@@ -230,7 +222,6 @@ netbird_editor_values_load(NetbirdEditorValues *values, NMConnection *connection
     replace_string(&values->management_url, vpn_data_first(vpn, management_url_keys));
     replace_string(&values->admin_url, vpn_data_first(vpn, admin_url_keys));
     replace_string(&values->username, vpn_data_first(vpn, username_keys));
-    replace_string(&values->hint, vpn_data_first(vpn, hint_keys));
     replace_string(&values->interface_name, vpn_data_first(vpn, interface_name_keys));
     replace_string(&values->hostname, vpn_data_first(vpn, hostname_keys));
 
@@ -432,11 +423,6 @@ netbird_editor_values_save(const NetbirdEditorValues *values, NMConnection *conn
     set_data_item(vpn, NETBIRD_KEY_USERNAME, username_keys, values->username);
     set_data_item(vpn, NETBIRD_KEY_INTERFACE_NAME, interface_name_keys, values->interface_name);
     set_data_item(vpn, NETBIRD_KEY_HOSTNAME, hostname_keys, values->hostname);
-
-    if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SSO) == 0)
-        set_data_item(vpn, NETBIRD_KEY_HINT, hint_keys, values->hint);
-    else
-        remove_data_keys(vpn, hint_keys);
 
     if (g_strcmp0(values->auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0)
         set_secret_item(vpn, NETBIRD_KEY_SETUP_KEY, setup_key_keys, values->setup_key);

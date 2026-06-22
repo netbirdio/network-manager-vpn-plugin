@@ -96,7 +96,7 @@ test_legacy_auth_defaults_to_sso(void)
 }
 
 static void
-test_sso_saves_hint_and_removes_setup_key(void)
+test_sso_removes_setup_key(void)
 {
     NMConnection *connection = nm_simple_connection_new();
     NetbirdEditorValues values;
@@ -106,7 +106,6 @@ test_sso_saves_hint_and_removes_setup_key(void)
     netbird_editor_values_init(&values);
     g_free(values.auth_mode);
     values.auth_mode = g_strdup(NETBIRD_AUTH_SSO);
-    values.hint = g_strdup(" alice@example.com ");
     values.setup_key = g_strdup("do-not-save");
 
     g_assert_true(netbird_editor_values_save(&values, connection, &error));
@@ -114,7 +113,6 @@ test_sso_saves_hint_and_removes_setup_key(void)
 
     vpn = get_vpn(connection);
     g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_AUTH), ==, NETBIRD_AUTH_SSO);
-    g_assert_cmpstr(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_HINT), ==, "alice@example.com");
     g_assert_null(nm_setting_vpn_get_secret(vpn, NETBIRD_KEY_SETUP_KEY));
     g_assert_null(nm_setting_vpn_get_data_item(vpn, NETBIRD_KEY_SETUP_KEY));
 
@@ -215,7 +213,7 @@ main(int argc, char **argv)
     g_test_add_func("/netbird-editor/empty-defaults", test_empty_connection_saves_defaults);
     g_test_add_func("/netbird-editor/canonical-save", test_existing_values_load_and_save_canonical_keys);
     g_test_add_func("/netbird-editor/legacy-auth-defaults-to-sso", test_legacy_auth_defaults_to_sso);
-    g_test_add_func("/netbird-editor/sso-save", test_sso_saves_hint_and_removes_setup_key);
+    g_test_add_func("/netbird-editor/sso-save", test_sso_removes_setup_key);
     g_test_add_func("/netbird-editor/clear-fields", test_empty_fields_remove_known_keys);
     g_test_add_func("/netbird-editor/validation", test_validation_rejects_invalid_url_and_interface);
     g_test_add_func("/netbird-editor/validation-valid-interfaces", test_validation_accepts_valid_interface_names);

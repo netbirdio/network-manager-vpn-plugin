@@ -131,7 +131,6 @@ type LoginRequest struct {
 	InterfaceName string
 	PreSharedKey  string
 	Profile       ProfileRef
-	Hint          string
 }
 
 // LoginResponse is the daemon login result used to drive SSO UX.

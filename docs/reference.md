@@ -44,7 +44,6 @@ Keys stored in NetworkManager `vpn.data`. The plugin reads these values during a
 | `username` | `user-name`, `user`, `netbird-username` | NetBird daemon profile owner username. Inferred from NetworkManager connection permissions or the service process user when omitted. |
 | `hostname` | `host-name` | Hostname sent during daemon login. Defaults to the local OS hostname. |
 | `interface-name` | `interfaceName`, `netbird-interface-name` | Desired NetBird WireGuard interface name. The daemon defaults to `wt0` (or the next available `wtN`). |
-| `hint` | `login-hint`, `sso-hint` | SSO login hint, commonly an email address. |
 
 ## VPN secrets keys
 
@@ -66,8 +65,7 @@ During interactive activation (`ConnectInteractive`), the service emits a `Secre
 | `x-netbird-sso-verification-uri=` | SSO device-code verification URL from the NetBird daemon. |
 | `x-netbird-sso-verification-uri-complete=` | SSO verification URL with user code pre-filled. |
 | `x-netbird-sso-user-code=` | SSO device-code user code. |
-| `x-netbird-sso-hint=` | Login hint (usually email) for SSO. |
-| `x-netbird-sso-continue=` | Included in `NewSecrets` to signal SSO should continue. |
+| `x-netbird-sso-continue` | Requested in SSO prompts and returned in `NewSecrets` to signal SSO should continue. |
 | `x-netbird-sso-cancel=` | Included in `NewSecrets` to signal SSO should be cancelled. |
 
 ## Service state constants
@@ -110,7 +108,7 @@ The `Failure` signal carries a `uint32` reason matching `NMVpnPluginFailure`.
 | --- | --- | --- |
 | `Connect` | `(connection: a{sa{sv}}) → ()` | Start a non-interactive VPN connection. Fails if SSO is needed without an interactive flow. |
 | `ConnectInteractive` | `(connection: a{sa{sv}}, details: a{sv}) → ()` | Start a VPN connection with interactive secret prompting. |
-| `NeedSecrets` | `(settings: a{sa{sv}}) → (setting_name: s)` | Returns `"vpn"` if the connection needs a setup-key secret or SSO hint prompt; returns `""` otherwise. |
+| `NeedSecrets` | `(settings: a{sa{sv}}) → (setting_name: s)` | Returns `"vpn"` if the connection needs a setup-key secret; returns `""` otherwise. |
 | `NewSecrets` | `(connection: a{sa{sv}}) → ()` | Deliver additional secrets to an in-flight activation prompt. |
 | `Disconnect` | `() → ()` | Stop the active VPN connection and close the daemon client. |
 | `SetConfig` | `(config: a{sv}) → ()` | No-op. NetBird owns the interface; NetworkManager config is not applied. |
@@ -129,7 +127,7 @@ The `Failure` signal carries a `uint32` reason matching `NMVpnPluginFailure`.
 | Signal | Signature | Description |
 | --- | --- | --- |
 | `StateChanged` | `(state: u)` | Emitted when the service state changes. |
-| `SecretsRequired` | `(message: s, secrets: as)` | Emitted when interactive authentication needs secrets (setup-key or SSO). |
+| `SecretsRequired` | `(message: s, secrets: as)` | Emitted when interactive authentication needs a setup-key secret or SSO user confirmation. |
 | `Config` | `(config: a{sv})` | Minimal config identifying the daemon-owned tunnel interface and external gateway. |
 | `Ip4Config` | `(ip4config: a{sv})` | Not used by this plugin; emitted only if needed for compatibility. |
 | `Ip6Config` | `(ip6config: a{sv})` | Not used by this plugin; emitted only if needed for compatibility. |

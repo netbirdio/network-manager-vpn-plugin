@@ -94,6 +94,13 @@ func TestRunFixtures(t *testing.T) {
 			wantStdout: expectedNoSecretExternalUI,
 		},
 		{
+			name:       "sso interaction does not prompt for login hint",
+			args:       append(baseArgs(), "--allow-interaction", "--external-ui-mode"),
+			stdin:      "DATA_KEY=auth\nDATA_VAL=sso\nDONE\n",
+			wantCode:   0,
+			wantStdout: expectedNoSecretExternalUI,
+		},
+		{
 			name:       "ignores blank separator lines",
 			args:       baseArgs(),
 			stdin:      "DATA_KEY=auth\nDATA_VAL=sso\n\nDONE\n",
@@ -154,29 +161,6 @@ func TestRunFixtures(t *testing.T) {
 	}
 }
 
-func TestRunPromptsForSSOLoginHint(t *testing.T) {
-	args := append(baseArgs(), "--allow-interaction", "--external-ui-mode")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := Run(args, strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
-	}
-	got := stdout.String()
-	for _, want := range []string{
-		"Title=NetBird SSO\n",
-		"[x-netbird-sso-hint]\n",
-		"Label=Email hint\n",
-		"IsSecret=false\n",
-		"ShouldAsk=true\n",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stdout does not contain %q:\n%s", want, got)
-		}
-	}
-}
-
 func TestRunIncludesActivationIDForDynamicSetupKeyPrompt(t *testing.T) {
 	args := append(baseArgs(),
 		"--allow-interaction",
@@ -213,7 +197,6 @@ func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
 		"--hint", "x-netbird-sso-verification-uri=https://login.netbird.io/device",
 		"--hint", "x-netbird-sso-verification-uri-complete=https://login.netbird.io/device?user_code=ABCD-EFGH",
 		"--hint", "x-netbird-sso-user-code=ABCD-EFGH",
-		"--hint", "x-netbird-sso-hint=alice@example.com",
 		"--hint", "x-netbird-activation-id=42",
 	)
 	var stdout bytes.Buffer
@@ -228,7 +211,6 @@ func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
 		"Title=NetBird SSO login required\n",
 		"Complete NetBird SSO in the browser window that opens.",
 		"User code: ABCD-EFGH",
-		"Login hint: alice@example.com",
 		"[x-netbird-sso-continue]\n",
 		"Value=true\n",
 		"IsSecret=false\n",
@@ -372,18 +354,6 @@ func TestExternalUIEscapesLeadingSpacesAndPreservesInvalidUTF8(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("Value=\\s\\s\xffsecret\n")) {
 		t.Fatalf("stdout did not preserve escaped leading spaces and invalid byte: %q", stdout.Bytes())
-	}
-}
-
-func TestRunErrorsForStandardModeSSOLoginHintPrompt(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := Run(append(baseArgs(), "--allow-interaction"), strings.NewReader("DATA_KEY=auth\nDATA_VAL=sso\nDONE\n"), &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 

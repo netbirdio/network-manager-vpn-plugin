@@ -26,15 +26,12 @@ const (
 	keyNetBirdSSOVerificationURI  = "x-netbird-sso-verification-uri"
 	keyNetBirdSSOVerificationFull = "x-netbird-sso-verification-uri-complete"
 	keyNetBirdSSOUserCode         = "x-netbird-sso-user-code"
-	keyNetBirdSSOHint             = "x-netbird-sso-hint"
 	keyNetBirdSSOContinue         = "x-netbird-sso-continue"
 	uiKeyfileGroup                = "VPN Plugin UI"
 	setupKeyLabel                 = "Setup key"
 	setupKeyPrompt                = "Enter the NetBird setup key for this connection."
 	setupKeyTitle                 = "NetBird authentication"
 	ssoTitle                      = "NetBird SSO login required"
-	ssoHintLabel                  = "Email hint"
-	ssoHintPrompt                 = "Enter an optional NetBird SSO login hint, then click Connect."
 	ssoContinueLabel              = "Continue"
 	internalPromptLabel           = "NetBird internal value"
 	maxProtocolLineLen            = 512 * 1024
@@ -342,16 +339,7 @@ func writeResponse(w io.Writer, opts Options, details vpnDetails) error {
 		return writeStandardSecret(w, keySetupKey, setupKey)
 	}
 
-	if opts.AllowInteraction && ssoHintRequired(details) {
-		return writeSSOHintPrompt(w, opts, details)
-	}
-
 	return writeNoSecret(w, opts.ExternalUIMode)
-}
-
-func ssoHintRequired(details vpnDetails) bool {
-	authMode := normalizeAuthMode(firstSetting(details.data, keyAuth, "auth-mode", "authentication", "login-mode"))
-	return authMode == "sso"
 }
 
 func setupKeyRequirement(hints hintValues, details vpnDetails) (bool, string) {
@@ -526,24 +514,6 @@ func writeExternalSetupKey(w io.Writer, hints hintValues, value string, shouldAs
 	return err
 }
 
-func writeSSOHintPrompt(w io.Writer, opts Options, details vpnDetails) error {
-	value := firstSetting(details.data, "hint", "login-hint", "sso-hint", keyNetBirdSSOHint)
-	if !opts.ExternalUIMode {
-		return errors.New("SSO login hint is required but external UI interaction is unavailable")
-	}
-	if opts.ExternalUIMode {
-		var b strings.Builder
-		writeKeyfileUIHeader(&b, "NetBird SSO", ssoHintPrompt)
-		writeKeyfileEntry(&b, keyNetBirdSSOHint, value, ssoHintLabel, false, true)
-		_, err := io.WriteString(w, b.String())
-		return err
-	}
-	return writeStandardSecrets(w, []standardSecret{
-		{key: keyNetBirdSSOHint, value: value},
-		{key: "user-name", value: value},
-	})
-}
-
 func writeSSOResponse(w io.Writer, opts Options, hints hintValues) error {
 	if !opts.AllowInteraction {
 		return errors.New("SSO login requires user interaction")
@@ -559,8 +529,8 @@ func writeExternalSSO(w io.Writer, hints hintValues) error {
 	var b strings.Builder
 	writeKeyfileUIHeader(&b, ssoTitle, formatSSODescription(hints))
 	writeKeyfileEntry(&b, keyNetBirdSSOContinue, "true", ssoContinueLabel, false, false)
-	// The URL, user code, and login hint are already shown in the UI description
-	// and LoginBanner. Do not add them again as hidden fields; some frontends
+	// The URL and user code are already shown in the UI description and
+	// LoginBanner. Do not add them again as hidden fields; some frontends
 	// render non-asked fields visibly, which makes the dialog noisy and hard to
 	// use. Only preserve the activation id needed to correlate NewSecrets.
 	writeInternalHintEntry(&b, hints, keyActivationID)
@@ -582,7 +552,6 @@ func writeInternalHintEntries(b *strings.Builder, hints hintValues) {
 	writeInternalHintEntry(b, hints, keyNetBirdSSOVerificationURI)
 	writeInternalHintEntry(b, hints, keyNetBirdSSOVerificationFull)
 	writeInternalHintEntry(b, hints, keyNetBirdSSOUserCode)
-	writeInternalHintEntry(b, hints, keyNetBirdSSOHint)
 }
 
 func writeInternalHintEntry(b *strings.Builder, hints hintValues, key string) {
@@ -606,9 +575,6 @@ func formatSSODescription(hints hintValues) string {
 	parts = append(parts, "Complete NetBird SSO in the browser window that opens.")
 	if code := hints.value(keyNetBirdSSOUserCode); code != "" {
 		parts = append(parts, "User code: "+code)
-	}
-	if hint := hints.value(keyNetBirdSSOHint); hint != "" {
-		parts = append(parts, "Login hint: "+hint)
 	}
 	parts = append(parts, "After browser login completes, click Connect to finish activation.")
 	return strings.Join(parts, "\n\n")

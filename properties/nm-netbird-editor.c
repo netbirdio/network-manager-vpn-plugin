@@ -10,12 +10,10 @@ struct _NetbirdEditor {
     GtkWidget *widget;
     GtkWidget *auth_combo;
     GtkWidget *setup_key_section;
-    GtkWidget *sso_section;
     GtkWidget *management_url_entry;
     GtkWidget *admin_url_entry;
     GtkWidget *username_entry;
     GtkWidget *setup_key_entry;
-    GtkWidget *hint_entry;
     GtkWidget *interface_name_entry;
     GtkWidget *hostname_entry;
     GtkWidget *pre_shared_key_entry;
@@ -161,7 +159,6 @@ update_visible_sections(NetbirdEditor *self)
 
     auth_mode = gtk_combo_box_get_active_id(GTK_COMBO_BOX(self->auth_combo));
     gtk_widget_set_visible(self->setup_key_section, g_strcmp0(auth_mode, NETBIRD_AUTH_SETUP_KEY) == 0);
-    gtk_widget_set_visible(self->sso_section, g_strcmp0(auth_mode, NETBIRD_AUTH_SSO) == 0);
 }
 
 static void
@@ -216,7 +213,6 @@ fill_values_from_ui(NetbirdEditor *self, NetbirdEditorValues *values)
     values->management_url = trimmed_entry_text(self->management_url_entry);
     values->admin_url = trimmed_entry_text(self->admin_url_entry);
     values->username = trimmed_entry_text(self->username_entry);
-    values->hint = trimmed_entry_text(self->hint_entry);
     values->interface_name = trimmed_entry_text(self->interface_name_entry);
     values->hostname = trimmed_entry_text(self->hostname_entry);
     values->setup_key = entry_text(self->setup_key_entry);
@@ -234,7 +230,6 @@ load_values_into_ui(NetbirdEditor *self, const NetbirdEditorValues *values)
     set_entry_text(self->management_url_entry, values->management_url);
     set_entry_text(self->admin_url_entry, values->admin_url);
     set_entry_text(self->username_entry, values->username);
-    set_entry_text(self->hint_entry, values->hint);
     set_entry_text(self->interface_name_entry, values->interface_name);
     set_entry_text(self->hostname_entry, values->hostname);
     set_entry_text(self->setup_key_entry, values->setup_key);
@@ -289,21 +284,6 @@ build_setup_key_section(NetbirdEditor *self)
 }
 
 static void
-build_sso_section(NetbirdEditor *self)
-{
-    GtkWidget *grid;
-
-    self->sso_section = new_section("SSO");
-    grid = section_grid(self->sso_section);
-
-    self->hint_entry = new_entry();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(self->hint_entry), "alice@example.com");
-    attach_row(grid, 0, "Login hint", self->hint_entry);
-
-    box_append_child(self->widget, self->sso_section);
-}
-
-static void
 build_advanced_section(NetbirdEditor *self)
 {
     GtkWidget *section;
@@ -334,7 +314,6 @@ connect_ui_signals(NetbirdEditor *self)
     connect_changed(self, self->admin_url_entry);
     connect_changed(self, self->username_entry);
     connect_changed(self, self->setup_key_entry);
-    connect_changed(self, self->hint_entry);
     connect_changed(self, self->interface_name_entry);
     connect_changed(self, self->hostname_entry);
     connect_changed(self, self->pre_shared_key_entry);
@@ -349,7 +328,6 @@ netbird_editor_init(NetbirdEditor *self)
 
     build_main_section(self);
     build_setup_key_section(self);
-    build_sso_section(self);
     build_advanced_section(self);
     connect_ui_signals(self);
 }

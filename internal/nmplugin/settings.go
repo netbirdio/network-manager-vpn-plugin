@@ -23,7 +23,6 @@ const (
 	netbirdSSOVerificationURIHint     = "x-netbird-sso-verification-uri"
 	netbirdSSOVerificationURIComplete = "x-netbird-sso-verification-uri-complete"
 	netbirdSSOUserCodeHint            = "x-netbird-sso-user-code"
-	netbirdSSOLoginHint               = "x-netbird-sso-hint"
 	netbirdSSOContinue                = "x-netbird-sso-continue"
 	netbirdSSOCancel                  = "x-netbird-sso-cancel"
 )
@@ -36,7 +35,6 @@ type activationSettings struct {
 	Hostname      string
 	InterfaceName string
 	PreSharedKey  string
-	Hint          string
 	AuthMode      string
 
 	PromptActivationID         string
@@ -44,7 +42,6 @@ type activationSettings struct {
 	SSOVerificationURI         string
 	SSOVerificationURIComplete string
 	SSOUserCode                string
-	SSOHint                    string
 	SSOContinue                bool
 	SSOCancel                  bool
 }
@@ -60,16 +57,6 @@ func parseActivationSettings(settings ConnectionSettings) activationSettings {
 
 	interfaceName := normalizeInterfaceName(firstSetting(values, "interface-name", "interfaceName", "netbird-interface-name"))
 	authMode := normalizeAuthMode(firstSetting(values, "auth", "auth-mode", "authentication", "login-mode"))
-	hint := firstSetting(values, "hint", "login-hint", "sso-hint")
-	ssoHint := firstSetting(values, netbirdSSOLoginHint)
-	if authMode == "sso" {
-		if ssoHint == "" {
-			ssoHint = firstSetting(values, "user-name")
-		}
-		if hint == "" {
-			hint = ssoHint
-		}
-	}
 
 	return activationSettings{
 		Profile: daemonclient.ProfileRef{
@@ -82,14 +69,12 @@ func parseActivationSettings(settings ConnectionSettings) activationSettings {
 		Hostname:                   firstSetting(values, "hostname", "host-name"),
 		InterfaceName:              interfaceName,
 		PreSharedKey:               firstSetting(values, "pre-shared-key", "preshared-key", "preSharedKey"),
-		Hint:                       hint,
 		AuthMode:                   authMode,
 		PromptActivationID:         firstSetting(values, netbirdPromptActivationID),
 		SSORequested:               boolSetting(values, netbirdSSOHint),
 		SSOVerificationURI:         firstSetting(values, netbirdSSOVerificationURIHint),
 		SSOVerificationURIComplete: firstSetting(values, netbirdSSOVerificationURIComplete),
 		SSOUserCode:                firstSetting(values, netbirdSSOUserCodeHint),
-		SSOHint:                    ssoHint,
 		SSOContinue:                boolSetting(values, netbirdSSOContinue),
 		SSOCancel:                  boolSetting(values, netbirdSSOCancel),
 	}
@@ -108,10 +93,6 @@ func normalizeInterfaceName(value string) string {
 
 func (s activationSettings) needsSetupKeySecret() bool {
 	return s.AuthMode == "setup-key" && strings.TrimSpace(s.SetupKey) == ""
-}
-
-func (s activationSettings) needsSSOHintPrompt() bool {
-	return s.AuthMode == "sso" && strings.TrimSpace(s.SSOHint) == ""
 }
 
 func (s activationSettings) shouldLogin(interactive bool) bool {
@@ -162,7 +143,6 @@ func (s activationSettings) daemonLoginRequest() daemonclient.LoginRequest {
 		InterfaceName: s.InterfaceName,
 		PreSharedKey:  s.PreSharedKey,
 		Profile:       s.Profile,
-		Hint:          s.Hint,
 	}
 }
 
@@ -201,9 +181,6 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 	if value := firstSetting(values, "setup-key", "setupKey", "netbird-setup-key"); value != "" {
 		settings.SetupKey = value
 	}
-	if value := firstSetting(values, "hint", "login-hint", "sso-hint"); value != "" {
-		settings.Hint = value
-	}
 	if value := firstSetting(values, netbirdPromptActivationID); value != "" {
 		settings.PromptActivationID = value
 	}
@@ -218,10 +195,6 @@ func mergeActivationDetails(settings activationSettings, details VariantMap) act
 	}
 	if value := firstSetting(values, netbirdSSOUserCodeHint); value != "" {
 		settings.SSOUserCode = value
-	}
-	if value := firstSetting(values, netbirdSSOLoginHint); value != "" {
-		settings.SSOHint = value
-		settings.Hint = value
 	}
 	if boolSetting(values, netbirdSSOContinue) {
 		settings.SSOContinue = true

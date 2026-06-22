@@ -64,7 +64,7 @@ Depending on the `auth` mode in `vpn.data`:
 | `auth` value | Behaviour |
 | --- | --- |
 | `setup-key` | Call `Login` on the daemon with the setup key from `vpn.secrets`. If the key is missing and the call was `ConnectInteractive`, emit `SecretsRequired` and wait for `NewSecrets`. |
-| `sso` | Call `Login` on the daemon to initiate device-code SSO, emit `LoginBanner` with the verification URL and user code, emit `SecretsRequired` for SSO hints, then poll `WaitSSOLogin` until the daemon reports completion or the SSO wait timeout (`--sso-wait-timeout`, default 10 minutes) expires. |
+| `sso` | Call `Login` on the daemon to initiate device-code SSO, emit `LoginBanner` with the verification URL and user code, emit `SecretsRequired` for the SSO continuation prompt, then poll `WaitSSOLogin` until the daemon reports completion or the SSO wait timeout (`--sso-wait-timeout`, default 10 minutes) expires. |
 
 Missing auth and legacy `login` / `reuse` values are normalized to `sso`; they are not separate modes. If `auth=sso` but the call was non-interactive `Connect`, the plugin fails immediately and emits a `LoginBanner` telling the user to rerun with `--ask`.
 

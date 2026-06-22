@@ -114,7 +114,7 @@ nmcli connection up netbird-setup
 
 ```bash
 nmcli connection add type vpn con-name netbird-sso vpn-type netbird ifname --
-nmcli connection modify netbird-sso +vpn.data "auth=sso,hint=alice@example.com"
+nmcli connection modify netbird-sso +vpn.data "auth=sso"
 nmcli connection up netbird-sso --ask
 ```
 

@@ -16,7 +16,6 @@
 #define NETBIRD_KEY_MANAGEMENT_URL "management-url"
 #define NETBIRD_KEY_ADMIN_URL "admin-url"
 #define NETBIRD_KEY_USERNAME "username"
-#define NETBIRD_KEY_HINT "hint"
 #define NETBIRD_KEY_INTERFACE_NAME "interface-name"
 #define NETBIRD_KEY_HOSTNAME "hostname"
 #define NETBIRD_KEY_PRE_SHARED_KEY "pre-shared-key"
@@ -37,7 +36,6 @@ typedef struct {
     char *management_url;
     char *admin_url;
     char *username;
-    char *hint;
     char *interface_name;
     char *hostname;
     char *setup_key;

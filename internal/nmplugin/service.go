@@ -186,7 +186,7 @@ func (s *Service) ConnectInteractive(connection ConnectionSettings, details Vari
 func (s *Service) NeedSecrets(settings ConnectionSettings) (string, *dbus.Error) {
 	s.logf("NeedSecrets(%s)", summarizeSettings(settings))
 	activationSettings := parseActivationSettings(settings)
-	if activationSettings.needsSetupKeySecret() || activationSettings.needsSSOHintPrompt() {
+	if activationSettings.needsSetupKeySecret() {
 		return vpnSettingName, nil
 	}
 	return "", nil
@@ -576,7 +576,7 @@ func (s *Service) authenticate(
 	if err := s.EmitLoginBanner(formatSSOLoginBanner(response)); err != nil {
 		s.logger.Printf("emit SSO login banner failed: %v", err)
 	}
-	s.startSSOPrompt(activationID, response, settings)
+	s.startSSOPrompt(activationID, response)
 	// The vendored LoginResponse does not expose a device-code expiry, so use the
 	// configured SSO wait timeout instead of the shorter activation phase timeout.
 	ssoCtx, cancel := s.ssoWaitContext(activationCtx)
@@ -619,7 +619,7 @@ func (s *Service) waitForSetupKeySecret(ctx context.Context, activationID uint64
 	}
 }
 
-func (s *Service) startSSOPrompt(activationID uint64, response daemonclient.LoginResponse, settings activationSettings) {
+func (s *Service) startSSOPrompt(activationID uint64, response daemonclient.LoginResponse) {
 	prompt := &activationPrompt{
 		activationID: activationID,
 		kind:         activationPromptSSO,
@@ -627,7 +627,7 @@ func (s *Service) startSSOPrompt(activationID uint64, response daemonclient.Logi
 	if !s.registerActivationPrompt(prompt) {
 		return
 	}
-	if err := s.EmitSecretsRequired(ssoRequiredMessage, ssoPromptHints(activationID, response, settings)); err != nil {
+	if err := s.EmitSecretsRequired(ssoRequiredMessage, ssoPromptHints(activationID, response)); err != nil {
 		s.logger.Printf("emit SSO SecretsRequired failed: %v", err)
 	}
 }
@@ -655,9 +655,6 @@ func mergePromptSettings(current activationSettings, delivered activationSetting
 	if delivered.SetupKey != "" {
 		current.SetupKey = delivered.SetupKey
 	}
-	if delivered.Hint != "" {
-		current.Hint = delivered.Hint
-	}
 	return current
 }
 
@@ -668,10 +665,11 @@ func setupKeyPromptHints(activationID uint64) []string {
 	}
 }
 
-func ssoPromptHints(activationID uint64, response daemonclient.LoginResponse, settings activationSettings) []string {
+func ssoPromptHints(activationID uint64, response daemonclient.LoginResponse) []string {
 	hints := []string{
 		formatPromptHint(netbirdPromptActivationID, formatActivationID(activationID)),
 		formatPromptHint(netbirdSSOHint, "true"),
+		netbirdSSOContinue,
 	}
 	if response.VerificationURI != "" {
 		hints = append(hints, formatPromptHint(netbirdSSOVerificationURIHint, response.VerificationURI))
@@ -681,9 +679,6 @@ func ssoPromptHints(activationID uint64, response daemonclient.LoginResponse, se
 	}
 	if response.UserCode != "" {
 		hints = append(hints, formatPromptHint(netbirdSSOUserCodeHint, response.UserCode))
-	}
-	if settings.Hint != "" {
-		hints = append(hints, formatPromptHint(netbirdSSOLoginHint, settings.Hint))
 	}
 	return hints
 }
@@ -875,11 +870,24 @@ func readyWaitError(ctxErr error, lastErr error, lastMessage string) error {
 }
 
 func (s *Service) logDaemonStatus(mapped nbstatus.Mapping) {
-	if mapped.DaemonVersion != "" {
-		s.logf("netbird daemon version %s status=%s", mapped.DaemonVersion, mapped.State)
+	if mapped.DaemonVersion == "" {
+		return
 	}
+
+	s.logf("netbird daemon version %s status=%s", mapped.DaemonVersion, mapped.State)
 }
 
+// reserveActivation claims the service's single activation slot.
+//
+// NetworkManager expects Connect/ConnectInteractive to return quickly, so the
+// real daemon work runs later in a goroutine. Reserving the slot before the
+// caller returns prevents a second Connect from racing with the in-flight
+// activation or with an already active daemon client.
+//
+// The returned context/cancel pair lets Disconnect, SetFailure, and cleanup
+// paths stop the asynchronous activation. The activation ID is used to match
+// interactive SecretsRequired/NewSecrets prompts with the activation that
+// created them, so stale prompt responses can be ignored safely.
 func (s *Service) reserveActivation() (context.Context, context.CancelFunc, uint64, *dbus.Error) {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
