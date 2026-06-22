@@ -131,7 +131,7 @@ func gatewayVariantForAddr(addr netip.Addr) (dbus.Variant, bool) {
 	}
 	if addr.Is4() {
 		bytes := addr.As4()
-		return dbus.MakeVariant(binary.NativeEndian.Uint32(bytes[:])), true
+		return dbus.MakeVariant(binary.BigEndian.Uint32(bytes[:])), true
 	}
 	if addr.Is6() {
 		bytes := addr.As16()

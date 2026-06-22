@@ -798,6 +798,7 @@ func (s *Service) emit(signal string, args ...any) error {
 func (s *Service) failActiveSessionAfterStatusThreshold(sessionID uint64, consecutiveFailures int) bool {
 	var client daemonclient.Client
 	var monitorCancel context.CancelFunc
+	var changed bool
 
 	s.lifecycleMu.Lock()
 	if s.sessionID != sessionID || s.client == nil {
@@ -810,7 +811,8 @@ func (s *Service) failActiveSessionAfterStatusThreshold(sessionID uint64, consec
 	client = s.client
 	s.client = nil
 	s.activeProfile = daemonclient.ProfileRef{}
-	changed := s.setStateValue(ServiceStateStopped)
+	changed = s.setStateValue(ServiceStateStopped)
+	s.lifecycleMu.Unlock()
 
 	if monitorCancel != nil {
 		monitorCancel()
@@ -820,7 +822,6 @@ func (s *Service) failActiveSessionAfterStatusThreshold(sessionID uint64, consec
 	if changed {
 		s.emitStateChanged(ServiceStateStopped)
 	}
-	s.lifecycleMu.Unlock()
 
 	if client != nil {
 		if err := client.Close(); err != nil {

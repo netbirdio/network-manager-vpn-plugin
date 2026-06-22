@@ -967,7 +967,7 @@ func TestConnectEmitsMinimalNetworkManagerConfig(t *testing.T) {
 			require.Equal(t, false, config["has-ip6"].Value())
 			gateway, ok := config["gateway"]
 			require.True(t, ok, "Config signal is missing NetworkManager gateway metadata")
-			require.Equal(t, nativeIPv4(t, "192.0.2.10"), gateway.Value())
+			require.Equal(t, networkIPv4(t, "192.0.2.10"), gateway.Value())
 			return
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for Config signal")
@@ -1045,7 +1045,7 @@ func TestConnectUsesDaemonConfigForNetworkManagerMetadata(t *testing.T) {
 			require.Equal(t, "wt-daemon", config["tundev"].Value())
 			gateway, ok := config["gateway"]
 			require.True(t, ok, "Config signal is missing NetworkManager gateway metadata")
-			require.Equal(t, nativeIPv4(t, "192.0.2.11"), gateway.Value())
+			require.Equal(t, networkIPv4(t, "192.0.2.11"), gateway.Value())
 			return
 		case <-time.After(time.Second):
 			t.Fatal("timed out waiting for Config signal")
@@ -1057,13 +1057,13 @@ func TestConnectUsesDaemonConfigForNetworkManagerMetadata(t *testing.T) {
 // ------ TESTING HELPERS ------------------------------------------------------
 // -----------------------------------------------------------------------------
 
-func nativeIPv4(t *testing.T, value string) uint32 {
+func networkIPv4(t *testing.T, value string) uint32 {
 	t.Helper()
 
 	addr, err := netip.ParseAddr(value)
 	require.NoError(t, err)
 	bytes := addr.As4()
-	return binary.NativeEndian.Uint32(bytes[:])
+	return binary.BigEndian.Uint32(bytes[:])
 }
 
 func assertState(t *testing.T, obj dbus.BusObject, want nmplugin.ServiceState) {

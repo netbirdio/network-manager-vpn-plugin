@@ -197,6 +197,7 @@ func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
 		"--hint", "x-netbird-sso-verification-uri=https://login.netbird.io/device",
 		"--hint", "x-netbird-sso-verification-uri-complete=https://login.netbird.io/device?user_code=ABCD-EFGH",
 		"--hint", "x-netbird-sso-user-code=ABCD-EFGH",
+		"--hint", "x-netbird-sso-hint=alice@example.com",
 		"--hint", "x-netbird-activation-id=42",
 	)
 	var stdout bytes.Buffer
@@ -220,6 +221,15 @@ func TestRunShowsSSOHintsInExternalUI(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout does not contain %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{
+		"x-netbird-sso-hint",
+		"Login hint:",
+		"alice@example.com",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("stdout contains removed login hint %q:\n%s", unwanted, got)
 		}
 	}
 }
