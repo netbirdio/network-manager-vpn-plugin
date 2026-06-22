@@ -23,6 +23,28 @@ When building the desktop properties editor from source:
 
 ## Quick install
 
+### One-line quickstart
+
+For Ubuntu/Debian/Fedora/RHEL on `amd64`/`x86_64`, the quickstart script installs NetworkManager prerequisites, enables NetworkManager, downloads the latest package, and installs it. The NetBird daemon/runtime requirement above still applies:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/netbirdio/network-manager-vpn-plugin/main/scripts/quickstart.sh | sh
+```
+
+To review it before running:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/netbirdio/network-manager-vpn-plugin/main/scripts/quickstart.sh
+less quickstart.sh
+sh quickstart.sh
+```
+
+For snapshot releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/netbirdio/network-manager-vpn-plugin/main/scripts/quickstart.sh | env RELEASE_TAG=snapshot sh
+```
+
 ### Ubuntu/Debian
 
 ```bash
@@ -30,7 +52,7 @@ sudo apt update
 sudo apt install network-manager curl
 sudo systemctl enable --now NetworkManager
 
-curl -fLO https://github.com/netbirdio/network-manager-vpn-plugin/releases/latest/download/network-manager-netbird_linux_amd64.deb
+curl -fL -o network-manager-netbird_linux_amd64.deb "$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest | grep '"browser_download_url":' | grep 'network-manager-netbird_.*_linux_amd64\.deb' | cut -d '"' -f 4)"
 sudo apt install ./network-manager-netbird_linux_amd64.deb
 ```
 
@@ -40,7 +62,12 @@ sudo apt install ./network-manager-netbird_linux_amd64.deb
 sudo dnf install NetworkManager curl
 sudo systemctl enable --now NetworkManager
 
-curl -fLO https://github.com/netbirdio/network-manager-vpn-plugin/releases/latest/download/network-manager-netbird_linux_amd64.rpm
+RELEASE_API=https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest
+asset_url="$(curl -fsSL "$RELEASE_API" |
+  grep '"browser_download_url":' |
+  grep 'network-manager-netbird_.*_linux_amd64\.rpm' |
+  cut -d '"' -f 4)"
+curl -fL -o network-manager-netbird_linux_amd64.rpm "$asset_url"
 sudo dnf install ./network-manager-netbird_linux_amd64.rpm
 ```
 
@@ -55,7 +82,7 @@ sudo ./install.sh
 
 Substitute `amd64` with `arm64` or `armv7` as needed.
 
-For snapshot releases, replace `latest/download` with `download/snapshot`.
+For snapshot releases, use `RELEASE_TAG=snapshot` with the quickstart script, set `RELEASE_API=https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/snapshot` in the package examples, or replace `latest/download` with `download/snapshot` in the tarball URL.
 
 ### Verify
 
