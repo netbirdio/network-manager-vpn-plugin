@@ -18,7 +18,7 @@ func TestParseActivationSettingsVPNDataPrecedesDuplicateNonVPNKeys(t *testing.T)
 		},
 	}
 
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		parsed := parseActivationSettings(settings)
 		if parsed.InterfaceName != "wt-netbird" {
 			t.Fatalf("iteration %d: InterfaceName = %q, want vpn.data value", i, parsed.InterfaceName)
@@ -38,7 +38,7 @@ func TestParseActivationSettingsVPNSecretsPrecedeDuplicateVPNDataKeys(t *testing
 		},
 	}
 
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		parsed := parseActivationSettings(settings)
 		if parsed.SetupKey != "secret-secret" {
 			t.Fatalf("iteration %d: SetupKey = %q, want vpn.secrets value", i, parsed.SetupKey)

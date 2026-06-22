@@ -1128,7 +1128,7 @@ func (s *Service) emitStateChanged(state ServiceState) {
 	}
 }
 
-func (s *Service) emit(signal string, args ...interface{}) error {
+func (s *Service) emit(signal string, args ...any) error {
 	name := Interface + "." + signal
 	if s.debug {
 		s.logger.Printf("emit %s", name)
@@ -1136,7 +1136,7 @@ func (s *Service) emit(signal string, args ...interface{}) error {
 	return s.conn.Emit(s.path, name, args...)
 }
 
-func (s *Service) logf(format string, args ...interface{}) {
+func (s *Service) logf(format string, args ...any) {
 	if s.debug {
 		s.logger.Printf(format, args...)
 		return
@@ -1256,6 +1256,6 @@ func summarizeVariantMap(values VariantMap) string {
 	return "{" + strings.Join(keys, ",") + "}"
 }
 
-func newDBusError(name string, format string, args ...interface{}) *dbus.Error {
-	return dbus.NewError(name, []interface{}{fmt.Sprintf(format, args...)})
+func newDBusError(name string, format string, args ...any) *dbus.Error {
+	return dbus.NewError(name, []any{fmt.Sprintf(format, args...)})
 }

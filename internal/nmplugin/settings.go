@@ -415,7 +415,7 @@ func permissionUsers(variant dbus.Variant) []string {
 			}
 		}
 		return permissionUsersFromStrings(permissions)
-	case []interface{}:
+	case []any:
 		permissions := make([]string, 0, len(typed))
 		for _, item := range typed {
 			if value, ok := anyToString(item); ok {
@@ -541,7 +541,7 @@ func variantToStringMap(variant dbus.Variant) map[string]string {
 		return typed
 	case map[string]dbus.Variant:
 		return variantMapToStrings(typed)
-	case map[string]interface{}:
+	case map[string]any:
 		out := make(map[string]string, len(typed))
 		for key, nested := range typed {
 			if value, ok := anyToString(nested); ok {

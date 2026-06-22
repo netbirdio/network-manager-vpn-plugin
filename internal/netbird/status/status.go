@@ -3,6 +3,7 @@ package status
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/netbirdio/netbird/client/proto"
@@ -218,10 +219,8 @@ func containsAny(value string, needles ...string) bool {
 			}
 			continue
 		}
-		for _, field := range fields {
-			if field == needle {
-				return true
-			}
+		if slices.Contains(fields, needle) {
+			return true
 		}
 	}
 	return false

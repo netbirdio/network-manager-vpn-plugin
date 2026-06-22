@@ -172,19 +172,19 @@ func (c *grpcClient) Login(ctx context.Context, request LoginRequest) (LoginResp
 		IsUnixDesktopClient: true,
 	}
 	if request.InterfaceName != "" {
-		req.InterfaceName = stringPtr(request.InterfaceName)
+		req.InterfaceName = new(request.InterfaceName)
 	}
 	if request.PreSharedKey != "" {
-		req.OptionalPreSharedKey = stringPtr(request.PreSharedKey)
+		req.OptionalPreSharedKey = new(request.PreSharedKey)
 	}
 	if request.Profile.ProfileName != "" {
-		req.ProfileName = stringPtr(request.Profile.ProfileName)
+		req.ProfileName = new(request.Profile.ProfileName)
 	}
 	if request.Profile.Username != "" {
-		req.Username = stringPtr(request.Profile.Username)
+		req.Username = new(request.Profile.Username)
 	}
 	if request.Hint != "" {
-		req.Hint = stringPtr(request.Hint)
+		req.Hint = new(request.Hint)
 	}
 
 	resp, err := c.client.Login(ctx, req)
@@ -224,10 +224,10 @@ func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileReq
 		AdminURL:      request.AdminURL,
 	}
 	if request.InterfaceName != "" {
-		req.InterfaceName = stringPtr(request.InterfaceName)
+		req.InterfaceName = new(request.InterfaceName)
 	}
 	if request.PreSharedKey != "" {
-		req.OptionalPreSharedKey = stringPtr(request.PreSharedKey)
+		req.OptionalPreSharedKey = new(request.PreSharedKey)
 	}
 	_, err := c.client.SetConfig(ctx, req)
 	if err != nil {
@@ -242,10 +242,10 @@ func (c *grpcClient) Up(ctx context.Context, profile ProfileRef) error {
 
 	req := &proto.UpRequest{}
 	if profile.ProfileName != "" {
-		req.ProfileName = stringPtr(profile.ProfileName)
+		req.ProfileName = new(profile.ProfileName)
 	}
 	if profile.Username != "" {
-		req.Username = stringPtr(profile.Username)
+		req.Username = new(profile.Username)
 	}
 	_, err := c.client.Up(ctx, req)
 	if err != nil {
@@ -274,7 +274,7 @@ func (c *grpcClient) Status(ctx context.Context, options StatusOptions) (*proto.
 		ShouldRunProbes:   options.ShouldRunProbes,
 	}
 	if options.WaitForReady {
-		req.WaitForReady = boolPtr(true)
+		req.WaitForReady = new(true)
 	}
 	resp, err := c.client.Status(ctx, req)
 	if err != nil {
@@ -399,5 +399,8 @@ func normalizeAddress(address string) string {
 	return address
 }
 
-func stringPtr(value string) *string { return &value }
-func boolPtr(value bool) *bool       { return &value }
+//go:fix inline
+func stringPtr(value string) *string { return new(value) }
+
+//go:fix inline
+func boolPtr(value bool) *bool { return new(value) }

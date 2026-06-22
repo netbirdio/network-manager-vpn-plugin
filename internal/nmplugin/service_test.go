@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/netip"
 	"os/exec"
 	osuser "os/user"
@@ -32,9 +33,7 @@ func TestMain(m *testing.M) {
 func setupKeyConnectionSettings(extraData ...map[string]string) nmplugin.ConnectionSettings {
 	data := map[string]string{"auth": "setup-key"}
 	for _, values := range extraData {
-		for key, value := range values {
-			data[key] = value
-		}
+		maps.Copy(data, values)
 	}
 	return nmplugin.ConnectionSettings{
 		"vpn": {
@@ -74,7 +73,7 @@ func TestStatusPollFailuresFailActiveSessionAfterThreshold(t *testing.T) {
 	waitForState(t, obj, nmplugin.ServiceStateStopped)
 
 	failure := waitForSignal(t, signals, "Failure")
-	require.Equal(t, []interface{}{uint32(nmplugin.PluginFailureConnectFailed)}, failure.Body)
+	require.Equal(t, []any{uint32(nmplugin.PluginFailureConnectFailed)}, failure.Body)
 	requireSignalState(t, signals, nmplugin.ServiceStateStopped)
 
 	fake.mu.Lock()
