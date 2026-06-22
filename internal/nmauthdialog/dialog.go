@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -617,7 +618,7 @@ var execCommand = exec.Command
 
 func openSSOBrowser(hints hintValues) {
 	uri, ok := validateSSOBrowserURI(firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI)))
-	if !ok || !hasGraphicalSession() {
+	if !ok || !hasDesktopOpenEnvironment() {
 		return
 	}
 	cmd := execCommand("xdg-open", uri)
@@ -644,8 +645,19 @@ func validateSSOBrowserURI(raw string) (string, bool) {
 	}
 }
 
-func hasGraphicalSession() bool {
-	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+func hasDesktopOpenEnvironment() bool {
+	if os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "" {
+		return true
+	}
+	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
+		return true
+	}
+	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
+		if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmpty(values ...string) string {

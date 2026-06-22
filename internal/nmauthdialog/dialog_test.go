@@ -327,6 +327,22 @@ func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
 	if got := strings.Join(calls[0], " "); got != "xdg-open https://login.netbird.io/device" {
 		t.Fatalf("xdg-open invocation = %q", got)
 	}
+
+	calls = nil
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=https://login.netbird.io/device"}))
+	if len(calls) != 0 {
+		t.Fatalf("xdg-open invoked without desktop open environment: %#v", calls)
+	}
+
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=https://login.netbird.io/device"}))
+	if len(calls) != 1 {
+		t.Fatalf("xdg-open calls with session bus = %#v, want exactly one", calls)
+	}
 }
 
 func TestRunDoesNotEchoMalformedProtocolSecret(t *testing.T) {
