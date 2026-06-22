@@ -113,6 +113,7 @@ If you configure a custom interface name outside `wt*`, update `90-netbird-unman
 ## Build from source
 
 ```bash
+task deps:install # install system build/test dependencies (Debian/Ubuntu/Arch/Fedora/RHEL)
 task build        # Go binaries + GTK 3 editor
 task test         # unit tests
 task run:session  # development on the session bus

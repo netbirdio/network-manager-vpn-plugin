@@ -23,11 +23,12 @@ Optional but useful:
 
 ## Initial setup
 
-Clone the repository and download Go modules:
+Clone the repository, install system dependencies, and download Go modules:
 
 ```bash
 git clone <repo-url>
 cd network-manager-vpn-plugin
+task deps:install
 go mod download
 ```
 

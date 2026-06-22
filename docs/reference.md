@@ -181,6 +181,7 @@ All targets are run via `task <name>`. See `Taskfile.yml` for full definitions.
 
 | Target | Description |
 | --- | --- |
+| `deps:install` | Install system build/test dependencies on Debian/Ubuntu/Arch/Fedora/RHEL; set `WITH_GTK4=1` to include GTK 4 headers. |
 | `build` | Build Go binaries + libnm editor plugin + GTK 3 editor. |
 | `build:go` | Build `nm-netbird-service` and `nm-netbird-auth-dialog`. |
 | `build:properties` | Build the libnm loader (`libnm-vpn-plugin-netbird.so`) and GTK 3 editor. |
