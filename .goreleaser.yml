@@ -84,6 +84,7 @@ archives:
     wrap_in_directory: true
     files:
       - README.md
+      - LICENSE
       - src: meson.build
         dst: meson.build
       - src: meson_options.txt
@@ -125,6 +126,7 @@ nfpms:
     homepage: https://netbird.io
     maintainer: NetBird <hello@netbird.io>
     description: NetworkManager VPN plugin for NetBird.
+    license: BSD-3-Clause
     section: net
     priority: optional
     bindir: /usr/libexec
@@ -145,6 +147,8 @@ nfpms:
       - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
         dst: /etc/NetworkManager/conf.d/90-netbird-unmanaged.conf
         type: config|noreplace
+      - src: LICENSE
+        dst: /usr/share/doc/network-manager-netbird/LICENSE
     scripts:
       postinstall: packaging/scripts/postinstall.sh
       postremove: packaging/scripts/postremove.sh

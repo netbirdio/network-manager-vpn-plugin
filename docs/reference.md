@@ -34,7 +34,7 @@ The following environment variables override the corresponding service flags. Se
 
 ## VPN data keys
 
-Keys stored in NetworkManager `vpn.data`. The plugin reads these values during activation and, for auth modes that update the daemon profile, writes them back through the NetBird daemon gRPC API.
+Keys stored in NetworkManager `vpn.data`. The plugin reads these values during activation. When it updates the daemon profile, it sends only daemon profile settings through the NetBird daemon gRPC API: management URL, admin URL, and interface name from `vpn.data`, plus PSK from `vpn.secrets`.
 
 | Key | Aliases | Description |
 | --- | --- | --- |
@@ -153,7 +153,7 @@ The plugin communicates with the local NetBird daemon over gRPC at the configure
 | `WaitSSOLogin` | Authentication | Polls the daemon for completion of an interactive SSO login. |
 | `GetActiveProfile` | Activation | Reads the currently active daemon profile to detect sessions owned by other connections. |
 | `ListProfiles` | Activation | Lists daemon profiles to resolve the `nm-<UUID>` profile name. |
-| `UpdateProfile` | Activation | Updates daemon profile settings (management URL, admin URL, interface name, PSK) from `vpn.data`. |
+| `SetConfig` | Activation | Updates daemon profile settings (management URL, admin URL, interface name, PSK) from NetworkManager settings. The service wraps this daemon RPC as `UpdateProfile` internally. |
 | `GetFeatures` | Activation | Reads daemon feature flags to decide whether profile updates are supported. |
 | `Up` | Activation | Starts the daemon engine for the resolved NetBird profile. |
 | `Down` | Deactivation | Stops the daemon engine. |
@@ -162,7 +162,7 @@ The plugin communicates with the local NetBird daemon over gRPC at the configure
 
 ## Installed files
 
-Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball installs use the same layout by default, with overrides available through `DESTDIR`, `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR`.
+Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball installs use the same layout for binaries, NetworkManager metadata, editor modules, and unmanaged-interface config by default, with overrides available through `DESTDIR`, `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR`.
 
 | Path | Purpose |
 | --- | --- |
@@ -172,8 +172,9 @@ Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball in
 | `/usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so` | GTK 3 editor module. |
 | `/usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so` | GTK 4 editor module. |
 | `/etc/NetworkManager/VPN/nm-netbird-service.name` | VPN service metadata. NetworkManager discovers the plugin through this file. |
-| `/etc/dbus-1/system.d/nm-netbird-service.conf` | D-Bus system policy (root-only access). |
+| `/usr/share/dbus-1/system.d/nm-netbird-service.conf` | D-Bus system policy for `.deb`/`.rpm` packages (root-only access). Tarball installs default to `/etc/dbus-1/system.d/nm-netbird-service.conf` unless `DBUS_POLICY_DIR` is overridden. |
 | `/etc/NetworkManager/conf.d/90-netbird-unmanaged.conf` | Marks `wt*` interfaces as unmanaged so NetworkManager does not touch them. |
+| `/usr/share/doc/network-manager-netbird/LICENSE` | License text for `.deb`/`.rpm` packages. Tarball releases include `LICENSE` at the archive root. |
 
 ## Build targets
 

@@ -70,7 +70,7 @@ Missing auth and legacy `login` / `reuse` values are normalized to `sso`; they a
 
 ### 5. Update daemon profile
 
-The plugin calls `UpdateProfile` when:
+The plugin updates the daemon profile through the NetBird daemon `SetConfig` RPC (wrapped internally as `UpdateProfile`) when:
 
 - `auth` is `setup-key` or `sso`; or
 - any of management URL, admin URL, interface name, or PSK is explicitly present in the NetworkManager settings.
@@ -131,7 +131,7 @@ The system-bus policy file (packaged as `nm-netbird-service.conf` under the syst
 </policy>
 ```
 
-Normal users cannot talk to the plugin directly. They must go through NetworkManager, which applies its own PolicyKit authorisation and connection permission checks before forwarding requests to the plugin.
+Normal users cannot call plugin methods directly on the system bus. They must go through NetworkManager, which applies its own PolicyKit authorisation and connection permission checks before forwarding requests to the plugin.
 
 ### Daemon socket
 

@@ -96,7 +96,7 @@ nmcli connection delete netbird-test
 
 ## Quick start
 
-NetworkManager profiles must use either `auth=sso` or `auth=setup-key`.
+NetworkManager profiles can set `auth=sso` or `auth=setup-key`. If `auth` is omitted, or if a legacy `login` / `reuse` value is used, the service treats the profile as `auth=sso`.
 
 **Setup-key login:**
 
@@ -117,10 +117,10 @@ nmcli connection modify netbird-sso +vpn.data "auth=sso,hint=alice@example.com"
 nmcli connection up netbird-sso --ask
 ```
 
-Deactivate:
+Deactivate a connection by name:
 
 ```bash
-nmcli connection down netbird
+nmcli connection down netbird-sso
 ```
 
 ## Unmanaged interface
