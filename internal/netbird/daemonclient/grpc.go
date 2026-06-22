@@ -213,6 +213,27 @@ func (c *grpcClient) WaitSSOLogin(ctx context.Context, request WaitSSOLoginReque
 	return WaitSSOLoginResponse{Email: resp.GetEmail()}, nil
 }
 
+func (c *grpcClient) SwitchProfile(ctx context.Context, profile ProfileRef) error {
+	if profile.Empty() {
+		return nil
+	}
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
+
+	req := &proto.SwitchProfileRequest{}
+	if profile.ProfileName != "" {
+		req.ProfileName = new(profile.ProfileName)
+	}
+	if profile.Username != "" {
+		req.Username = new(profile.Username)
+	}
+	_, err := c.client.SwitchProfile(ctx, req)
+	if err != nil {
+		return daemonError("switch profile", err)
+	}
+	return nil
+}
+
 func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileRequest) error {
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
@@ -398,9 +419,3 @@ func normalizeAddress(address string) string {
 	}
 	return address
 }
-
-//go:fix inline
-func stringPtr(value string) *string { return new(value) }
-
-//go:fix inline
-func boolPtr(value bool) *bool { return new(value) }

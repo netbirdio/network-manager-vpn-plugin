@@ -53,6 +53,7 @@ type Factory interface {
 type Client interface {
 	Login(ctx context.Context, request LoginRequest) (LoginResponse, error)
 	WaitSSOLogin(ctx context.Context, request WaitSSOLoginRequest) (WaitSSOLoginResponse, error)
+	SwitchProfile(ctx context.Context, profile ProfileRef) error
 	UpdateProfile(ctx context.Context, request UpdateProfileRequest) error
 	Up(ctx context.Context, profile ProfileRef) error
 	Down(ctx context.Context) error

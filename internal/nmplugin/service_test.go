@@ -823,6 +823,38 @@ func TestConnectInteractiveWithoutAuthDefaultsToSSO(t *testing.T) {
 	require.Len(t, fake.upRequests, 1)
 }
 
+func TestConnectInteractiveSwitchesDaemonProfileBeforeLogin(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+	desired := daemonclient.ProfileRef{ProfileName: "nm-vpn-1-uuid", Username: "test"}
+
+	fake.mu.Lock()
+	fake.activeProfile = daemonclient.ProfileRef{ProfileName: "nm-vpn-2-uuid", Username: "test"}
+	fake.status = &proto.StatusResponse{Status: "disconnected", DaemonVersion: "test"}
+	fake.statusAfterSwitch = &proto.StatusResponse{Status: "connected", DaemonVersion: "test"}
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"uuid":        dbus.MakeVariant("vpn-1-uuid"),
+			"permissions": dbus.MakeVariant([]string{"user:test:"}),
+		},
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "sso"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".ConnectInteractive", 0, settings, nmplugin.VariantMap{}).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Equal(t, []daemonclient.ProfileRef{desired}, fake.switchProfileRequests)
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, desired, fake.loginRequests[0].Profile)
+	require.Equal(t, []daemonclient.ProfileRef{desired}, fake.loginActiveProfiles)
+	require.Equal(t, []daemonclient.ProfileRef{desired}, fake.upRequests)
+}
+
 func TestConnectInteractiveWaitsPastActivationTimeoutForSSO(t *testing.T) {
 	obj, fake, _ := newTestingBusObjectWithServiceOptions(t, func(options *nmplugin.ServiceOptions) {
 		options.ActivationTimeout = 100 * time.Millisecond
@@ -1345,6 +1377,7 @@ type fakeDaemonClient struct {
 
 	loginResponse        daemonclient.LoginResponse
 	status               *proto.StatusResponse
+	statusAfterSwitch    *proto.StatusResponse
 	statusErr            error
 	statusErrs           []error
 	statusWaitForContext bool
@@ -1360,6 +1393,8 @@ type fakeDaemonClient struct {
 	getConfigRelease chan struct{}
 
 	loginRequests         []daemonclient.LoginRequest
+	loginActiveProfiles   []daemonclient.ProfileRef
+	switchProfileRequests []daemonclient.ProfileRef
 	updateProfileRequests []daemonclient.UpdateProfileRequest
 	upRequests            []daemonclient.ProfileRef
 	upErrs                []error
@@ -1378,7 +1413,20 @@ func (f *fakeDaemonClient) Login(ctx context.Context, request daemonclient.Login
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.loginRequests = append(f.loginRequests, request)
+	f.loginActiveProfiles = append(f.loginActiveProfiles, f.activeProfile)
 	return f.loginResponse, nil
+}
+
+func (f *fakeDaemonClient) SwitchProfile(ctx context.Context, ref daemonclient.ProfileRef) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.switchProfileRequests = append(f.switchProfileRequests, ref)
+	f.activeProfile = ref
+	if f.statusAfterSwitch != nil {
+		f.status = f.statusAfterSwitch
+		f.statusAfterSwitch = nil
+	}
+	return nil
 }
 
 func (f *fakeDaemonClient) UpdateProfile(ctx context.Context, request daemonclient.UpdateProfileRequest) error {

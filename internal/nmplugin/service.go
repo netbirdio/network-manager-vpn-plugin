@@ -401,14 +401,10 @@ func (s *Service) runActivation(
 		return
 	}
 
-	preparedProfile, err := profile.PrepareActivation(ctx, client, settings.Profile)
+	settings, err = s.prepareDaemonProfile(ctx, client, settings)
 	if err != nil {
 		s.failActivation(PluginFailureConnectFailed, err)
 		return
-	}
-	settings.Profile = preparedProfile
-	if settings.Profile.ProfileName != "" && settings.Profile.Username == "" {
-		settings.Profile.Username = currentProcessUsername()
 	}
 
 	waitedForSSO, err := s.authenticate(ctx, activationCtx, activationID, client, settings, interactive)
@@ -499,6 +495,31 @@ func (s *Service) resetActivationPhaseAfterSSO(
 	}
 	currentCancel()
 	return s.activationPhaseContext(activationCtx)
+}
+
+func (s *Service) prepareDaemonProfile(ctx context.Context, client daemonclient.Client, settings activationSettings) (activationSettings, error) {
+	preparedProfile, err := profile.PrepareActivation(ctx, client, settings.Profile)
+	if err != nil {
+		return settings, err
+	}
+	settings.Profile = preparedProfile
+	if settings.Profile.ProfileName != "" && settings.Profile.Username == "" {
+		settings.Profile.Username = currentProcessUsername()
+	}
+	if err := s.switchDaemonProfile(ctx, client, settings.Profile); err != nil {
+		return settings, err
+	}
+	return settings, nil
+}
+
+func (s *Service) switchDaemonProfile(ctx context.Context, client daemonclient.Client, profile daemonclient.ProfileRef) error {
+	if profile.Empty() {
+		return nil
+	}
+	if err := client.SwitchProfile(ctx, profile); err != nil {
+		return fmt.Errorf("switch daemon profile: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) updateDaemonProfile(ctx context.Context, client daemonclient.Client, settings activationSettings) error {
