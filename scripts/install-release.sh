@@ -283,8 +283,8 @@ cat <<'EOF'
 NetworkManager NetBird plugin installed.
 
 Next steps:
-  1. Make sure the NetBird daemon/runtime is installed and logged in, or configure setup-key/SSO data.
-  2. Create a NetworkManager profile, for example:
+  1. Make sure the NetBird daemon/runtime is installed and running.
+  2. Create a NetworkManager profile with setup-key or SSO auth data, for example:
        nmcli connection add type vpn con-name NetBird vpn-type netbird ifname --
   3. Activate it:
        nmcli connection up NetBird
