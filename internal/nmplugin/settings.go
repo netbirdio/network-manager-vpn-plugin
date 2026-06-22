@@ -115,11 +115,8 @@ func (s activationSettings) needsSSOHintPrompt() bool {
 }
 
 func (s activationSettings) shouldLogin(interactive bool) bool {
-	if strings.TrimSpace(s.SetupKey) != "" {
-		return true
-	}
 	switch s.AuthMode {
-	case "setup-key", "login":
+	case "setup-key":
 		return true
 	case "sso":
 		return interactive
@@ -130,7 +127,7 @@ func (s activationSettings) shouldLogin(interactive bool) bool {
 
 func (s activationSettings) shouldUpdateProfile() bool {
 	switch s.AuthMode {
-	case "setup-key", "login", "sso":
+	case "setup-key", "sso":
 		return true
 	}
 	return strings.TrimSpace(s.ManagementURL) != "" ||
@@ -139,13 +136,26 @@ func (s activationSettings) shouldUpdateProfile() bool {
 		strings.TrimSpace(s.PreSharedKey) != ""
 }
 
+func (s activationSettings) validateAuthMode() error {
+	switch s.AuthMode {
+	case "setup-key", "sso":
+		return nil
+	default:
+		return fmt.Errorf("unsupported auth mode %q (must be setup-key or sso)", s.AuthMode)
+	}
+}
+
 func (s activationSettings) daemonLoginRequest() daemonclient.LoginRequest {
 	hostname := strings.TrimSpace(s.Hostname)
 	if hostname == "" {
 		hostname = defaultHostname()
 	}
+	setupKey := ""
+	if s.AuthMode == "setup-key" {
+		setupKey = s.SetupKey
+	}
 	return daemonclient.LoginRequest{
-		SetupKey:      s.SetupKey,
+		SetupKey:      setupKey,
 		ManagementURL: s.ManagementURL,
 		AdminURL:      s.AdminURL,
 		Hostname:      hostname,
@@ -507,10 +517,8 @@ func normalizeAuthMode(value string) string {
 	switch value {
 	case "setupkey", "setup-key", "key":
 		return "setup-key"
-	case "sso", "browser", "interactive":
+	case "", "sso", "browser", "interactive", "login", "force-login", "reuse":
 		return "sso"
-	case "login", "force-login":
-		return "login"
 	default:
 		return value
 	}

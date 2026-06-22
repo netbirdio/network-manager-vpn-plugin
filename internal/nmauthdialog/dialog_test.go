@@ -374,7 +374,7 @@ func TestRunErrorsForStandardModeSSOLoginHintPrompt(t *testing.T) {
 func TestRunIgnoresUnknownHints(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run(append(baseArgs(), "--hint", "unknown-secret-hint=super-secret-token"), strings.NewReader("DATA_KEY=auth\nDATA_VAL=login\nDONE\n"), &stdout, &stderr)
+	code := Run(append(baseArgs(), "--hint", "unknown-secret-hint=super-secret-token"), strings.NewReader("DATA_KEY=auth\nDATA_VAL=unsupported\nDONE\n"), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 	}

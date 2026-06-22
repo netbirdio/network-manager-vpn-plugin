@@ -38,7 +38,7 @@ Keys stored in NetworkManager `vpn.data`. The plugin reads these values during a
 
 | Key | Aliases | Description |
 | --- | --- | --- |
-| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Accepted values: `setup-key`, `sso`. Omit to use an existing daemon session. Legacy values `login` and `reuse` are accepted for backwards compatibility but are not exposed by the desktop editor. |
+| `auth` | `auth-mode`, `authentication`, `login-mode` | Auth behavior. Accepted values: `setup-key`, `sso`. Missing auth and legacy `login` / `reuse` values are normalized to `sso`; they are not separate modes. |
 | `management-url` | `managementUrl`, `netbird-management-url` | Management URL for daemon login and profile updates. Defaults to `https://api.netbird.io:443`. |
 | `admin-url` | `adminURL`, `netbird-admin-url` | Admin URL for daemon login and profile updates. Defaults to `https://app.netbird.io:443`. |
 | `username` | `user-name`, `user`, `netbird-username` | NetBird daemon profile owner username. Inferred from NetworkManager connection permissions or the service process user when omitted. |

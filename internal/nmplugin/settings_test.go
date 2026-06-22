@@ -46,6 +46,25 @@ func TestParseActivationSettingsVPNSecretsPrecedeDuplicateVPNDataKeys(t *testing
 	}
 }
 
+func TestParseActivationSettingsDefaultsMissingAuthToSSO(t *testing.T) {
+	parsed := parseActivationSettings(ConnectionSettings{})
+	if parsed.AuthMode != "sso" {
+		t.Fatalf("AuthMode = %q, want sso", parsed.AuthMode)
+	}
+}
+
+func TestParseActivationSettingsNormalizesLegacyAuthToSSO(t *testing.T) {
+	settings := ConnectionSettings{
+		"vpn": {
+			"data": dbus.MakeVariant(map[string]string{"auth": "reuse"}),
+		},
+	}
+	parsed := parseActivationSettings(settings)
+	if parsed.AuthMode != "sso" {
+		t.Fatalf("AuthMode = %q, want sso", parsed.AuthMode)
+	}
+}
+
 func TestParseActivationSettingsNetBirdPromptKeys(t *testing.T) {
 	settings := ConnectionSettings{
 		"vpn": {

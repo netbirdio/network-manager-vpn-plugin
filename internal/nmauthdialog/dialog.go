@@ -328,27 +328,24 @@ func writeResponse(w io.Writer, opts Options, details vpnDetails) error {
 		return writeSSOResponse(w, opts, hints)
 	}
 
+	needsSetupKey, setupKey := setupKeyRequirement(hints, details)
+	if needsSetupKey {
+		shouldAsk := opts.Reprompt || strings.TrimSpace(setupKey) == ""
+		if shouldAsk && (!opts.ExternalUIMode || !opts.AllowInteraction) {
+			return errors.New("setup-key secret is required but interaction is unavailable")
+		}
+
+		if opts.ExternalUIMode {
+			return writeExternalSetupKey(w, hints, setupKey, shouldAsk)
+		}
+		return writeStandardSecret(w, keySetupKey, setupKey)
+	}
+
 	if opts.AllowInteraction && ssoHintRequired(details) {
 		return writeSSOHintPrompt(w, opts, details)
 	}
 
-	needsSetupKey, setupKey, err := setupKeyRequirement(hints, details)
-	if err != nil {
-		return err
-	}
-	if !needsSetupKey {
-		return writeNoSecret(w, opts.ExternalUIMode)
-	}
-
-	shouldAsk := opts.Reprompt || strings.TrimSpace(setupKey) == ""
-	if shouldAsk && (!opts.ExternalUIMode || !opts.AllowInteraction) {
-		return errors.New("setup-key secret is required but interaction is unavailable")
-	}
-
-	if opts.ExternalUIMode {
-		return writeExternalSetupKey(w, hints, setupKey, shouldAsk)
-	}
-	return writeStandardSecret(w, keySetupKey, setupKey)
+	return writeNoSecret(w, opts.ExternalUIMode)
 }
 
 func ssoHintRequired(details vpnDetails) bool {
@@ -356,13 +353,13 @@ func ssoHintRequired(details vpnDetails) bool {
 	return authMode == "sso"
 }
 
-func setupKeyRequirement(hints hintValues, details vpnDetails) (bool, string, error) {
+func setupKeyRequirement(hints hintValues, details vpnDetails) (bool, string) {
 	authMode := normalizeAuthMode(firstSetting(details.data, keyAuth, "auth-mode", "authentication", "login-mode"))
 	setupKey := firstSettingPreserveValue(details.secrets, keySetupKey, "setupKey", "netbird-setup-key")
 	if setupKey == "" {
 		setupKey = firstSetting(details.data, keySetupKey, "setupKey", "netbird-setup-key")
 	}
-	return authMode == "setup-key" || hints.hasSetupKey(), setupKey, nil
+	return authMode == "setup-key" || hints.hasSetupKey(), setupKey
 }
 
 type hintValues struct {
@@ -415,16 +412,6 @@ func (h hintValues) ssoRequested() bool {
 func isTruthy(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "t", "true", "y", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func isSupportedInternalHint(value string) bool {
-	key, _, _ := strings.Cut(value, "=")
-	switch normalizeSettingKey(key) {
-	case normalizeSettingKey(keyActivationID):
 		return true
 	default:
 		return false
@@ -485,10 +472,8 @@ func normalizeAuthMode(value string) string {
 	switch value {
 	case "setupkey", "setup-key", "key":
 		return "setup-key"
-	case "sso", "browser", "interactive":
+	case "", "sso", "browser", "interactive", "login", "force-login", "reuse":
 		return "sso"
-	case "login", "force-login":
-		return "login"
 	default:
 		return value
 	}

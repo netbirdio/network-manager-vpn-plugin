@@ -63,25 +63,23 @@ Depending on the `auth` mode in `vpn.data`:
 
 | `auth` value | Behaviour |
 | --- | --- |
-| *(empty)* | Skip login when no setup key secret is present. The daemon must already have a valid session. If a setup key is present in settings or secrets, the plugin still calls `Login` with it. |
 | `setup-key` | Call `Login` on the daemon with the setup key from `vpn.secrets`. If the key is missing and the call was `ConnectInteractive`, emit `SecretsRequired` and wait for `NewSecrets`. |
 | `sso` | Call `Login` on the daemon to initiate device-code SSO, emit `LoginBanner` with the verification URL and user code, emit `SecretsRequired` for SSO hints, then poll `WaitSSOLogin` until the daemon reports completion or the SSO wait timeout (`--sso-wait-timeout`, default 10 minutes) expires. |
-| `login` | Compatibility mode that forces a daemon `Login` call using the configured profile settings. |
 
-If `auth=sso` but the call was non-interactive `Connect`, the plugin fails immediately and emits a `LoginBanner` telling the user to rerun with `--ask`.
+Missing auth and legacy `login` / `reuse` values are normalized to `sso`; they are not separate modes. If `auth=sso` but the call was non-interactive `Connect`, the plugin fails immediately and emits a `LoginBanner` telling the user to rerun with `--ask`.
 
 ### 5. Update daemon profile
 
 The plugin calls `UpdateProfile` when:
 
-- `auth` is `setup-key`, `sso`, or `login`; or
+- `auth` is `setup-key` or `sso`; or
 - any of management URL, admin URL, interface name, or PSK is explicitly present in the NetworkManager settings.
 
 The plugin does not first compare these values with the daemon's current configuration. For update requests, empty management/admin URLs are filled with the plugin defaults (`https://api.netbird.io:443` and `https://app.netbird.io:443`). The update is skipped if the daemon reports `DisableUpdateSettings` in its feature flags.
 
-### 6. `Up` and authentication retry
+### 6. `Up`
 
-The plugin calls `Up` on the daemon for the resolved profile. If the daemon responds with an authentication error, the plugin retries once with SSO login when the call was interactive — this covers the case where `Up` triggers the daemon to discover that a session has expired.
+The plugin calls `Up` on the daemon for the resolved profile. If the daemon responds with an authentication error, activation fails with `LOGIN_FAILED`.
 
 ### 7. Wait for ready
 

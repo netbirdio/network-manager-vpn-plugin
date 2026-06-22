@@ -5,12 +5,12 @@ go 1.26.2
 require (
 	github.com/godbus/dbus/v5 v5.2.2
 	google.golang.org/grpc v1.80.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 require go.uber.org/goleak v1.3.0
 
-require github.com/netbirdio/netbird v0.72.4 // indirect
+require github.com/netbirdio/netbird v0.72.4
 
 require (
 	github.com/go-openapi/testify/v2 v2.5.0

@@ -69,12 +69,7 @@ nmcli connection delete netbird-test
 
 ## Quick start
 
-**Existing daemon login:**
-
-```bash
-nmcli connection add type vpn con-name netbird vpn-type netbird ifname --
-nmcli connection up netbird
-```
+NetworkManager profiles must use either `auth=sso` or `auth=setup-key`.
 
 **Setup-key login:**
 
@@ -88,13 +83,6 @@ nmcli connection up netbird-setup
 ```
 
 **SSO login:**
-
-```bash
-netbird login                            # log in the daemon first, then
-nmcli connection up netbird
-```
-
-Or use the interactive flow:
 
 ```bash
 nmcli connection add type vpn con-name netbird-sso vpn-type netbird ifname --
