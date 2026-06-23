@@ -68,6 +68,20 @@ During interactive activation (`ConnectInteractive`), the service emits a `Secre
 | `x-netbird-sso-continue` | Requested in SSO prompts and returned in `NewSecrets` to signal SSO should continue. |
 | `x-netbird-sso-cancel=` | Included in `NewSecrets` to signal SSO should be cancelled. |
 
+## Auth-dialog CLI smoke test
+
+`nm-netbird-auth-dialog` normally runs as a NetworkManager auth-dialog helper. It also has a browser smoke-test mode for SSO desktop diagnostics:
+
+```bash
+/usr/libexec/nm-netbird-auth-dialog --test-browser 'https://login.netbird.io/device'
+```
+
+This validates that the URL is HTTP(S), checks for a desktop-open environment, runs `xdg-open`, and waits up to 5 seconds. Use `--test-browser-timeout 10s` to change the timeout, or `--test-browser-force` to try `xdg-open` even when no desktop environment is detected.
+
+Package installs depend on `xdg-utils` for `xdg-open`. For tarball or manual installs, make sure `xdg-open` is available on `PATH`.
+
+From a source checkout, build first and run `./bin/nm-netbird-auth-dialog --test-browser ...`.
+
 ## Service state constants
 
 The `State` D-Bus property uses the following values (matching `NMVpnServiceState` from libnm).
