@@ -297,19 +297,31 @@ func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
 
 	t.Setenv("DISPLAY", ":1")
 	oldExecCommand := execCommand
-	t.Cleanup(func() { execCommand = oldExecCommand })
+	oldNotifyOpeningSSOBrowser := notifyOpeningSSOBrowser
+	t.Cleanup(func() {
+		execCommand = oldExecCommand
+		notifyOpeningSSOBrowser = oldNotifyOpeningSSOBrowser
+	})
+
+	var notifications int
+	notifyOpeningSSOBrowser = func() { notifications++ }
 
 	var calls [][]string
+	var lastCmd *exec.Cmd
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{name}, args...))
-		cmd := exec.Command(os.Args[0], "-test.run=TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI")
+		cmd := exec.Command(os.Args[0], "-test.run=^TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI$")
 		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
+		lastCmd = cmd
 		return cmd
 	}
 
 	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=file:///tmp/secret"}))
 	if len(calls) != 0 {
 		t.Fatalf("xdg-open invoked for rejected URI: %#v", calls)
+	}
+	if notifications != 0 {
+		t.Fatalf("notification shown for rejected URI: %d", notifications)
 	}
 
 	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=  https://login.netbird.io/device  "}))
@@ -318,6 +330,12 @@ func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
 	}
 	if got := strings.Join(calls[0], " "); got != "xdg-open https://login.netbird.io/device" {
 		t.Fatalf("xdg-open invocation = %q", got)
+	}
+	if lastCmd.Stdin != nil || lastCmd.Stdout != nil || lastCmd.Stderr != nil {
+		t.Fatalf("detached xdg-open should use /dev/null stdio, got stdin=%T stdout=%T stderr=%T", lastCmd.Stdin, lastCmd.Stdout, lastCmd.Stderr)
+	}
+	if notifications != 1 {
+		t.Fatalf("notifications = %d, want 1", notifications)
 	}
 
 	calls = nil
@@ -329,11 +347,82 @@ func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
 	if len(calls) != 0 {
 		t.Fatalf("xdg-open invoked without desktop open environment: %#v", calls)
 	}
+	if notifications != 1 {
+		t.Fatalf("notification shown without desktop open environment: %d", notifications)
+	}
 
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
 	openSSOBrowser(parseHints([]string{"x-netbird-sso-verification-uri=https://login.netbird.io/device"}))
 	if len(calls) != 1 {
 		t.Fatalf("xdg-open calls with session bus = %#v, want exactly one", calls)
+	}
+	if notifications != 2 {
+		t.Fatalf("notifications with session bus = %d, want 2", notifications)
+	}
+}
+
+func TestRunBrowserTestCLI(t *testing.T) {
+	if os.Getenv("GO_WANT_BROWSER_TEST_HELPER") == "1" {
+		os.Exit(0)
+	}
+
+	t.Setenv("DISPLAY", ":1")
+	oldExecCommand := execCommand
+	t.Cleanup(func() { execCommand = oldExecCommand })
+
+	var calls [][]string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, args...))
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRunBrowserTestCLI$")
+		cmd.Env = append(os.Environ(), "GO_WANT_BROWSER_TEST_HELPER=1")
+		return cmd
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run([]string{
+		"--test-browser", " https://login.netbird.io/device?user_code=ABCD-EFGH ",
+	}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
+	}
+	if stdout.String() != "opened https://login.netbird.io/device?user_code=ABCD-EFGH\n" {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if len(calls) != 1 {
+		t.Fatalf("xdg-open calls = %#v, want exactly one", calls)
+	}
+	if got := strings.Join(calls[0], " "); got != "xdg-open https://login.netbird.io/device?user_code=ABCD-EFGH" {
+		t.Fatalf("xdg-open invocation = %q", got)
+	}
+}
+
+func TestRunBrowserTestCLIRequiresDesktopEnvironment(t *testing.T) {
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+
+	oldExecCommand := execCommand
+	t.Cleanup(func() { execCommand = oldExecCommand })
+
+	var calls [][]string
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		calls = append(calls, append([]string{name}, args...))
+		return exec.Command(os.Args[0], "-test.run=^TestRunBrowserTestCLIRequiresDesktopEnvironment$")
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run([]string{"--test-browser", "https://login.netbird.io/device"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if len(calls) != 0 {
+		t.Fatalf("xdg-open invoked without desktop environment: %#v", calls)
+	}
+	if !strings.Contains(stderr.String(), "no desktop environment detected") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
