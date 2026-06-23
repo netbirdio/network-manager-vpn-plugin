@@ -310,7 +310,7 @@ func TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI(t *testing.T) {
 	var lastCmd *exec.Cmd
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{name}, args...))
-		cmd := exec.Command(os.Args[0], "-test.run=TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI")
+		cmd := exec.Command(os.Args[0], "-test.run=^TestOpenSSOBrowserOnlyInvokesXDGOpenForAllowedURI$")
 		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 		lastCmd = cmd
 		return cmd
@@ -373,7 +373,7 @@ func TestRunBrowserTestCLI(t *testing.T) {
 	var calls [][]string
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{name}, args...))
-		cmd := exec.Command(os.Args[0], "-test.run=TestRunBrowserTestCLI")
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRunBrowserTestCLI$")
 		cmd.Env = append(os.Environ(), "GO_WANT_BROWSER_TEST_HELPER=1")
 		return cmd
 	}
@@ -409,7 +409,7 @@ func TestRunBrowserTestCLIRequiresDesktopEnvironment(t *testing.T) {
 	var calls [][]string
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{name}, args...))
-		return exec.Command(os.Args[0], "-test.run=TestRunBrowserTestCLIRequiresDesktopEnvironment")
+		return exec.Command(os.Args[0], "-test.run=^TestRunBrowserTestCLIRequiresDesktopEnvironment$")
 	}
 
 	var stdout bytes.Buffer

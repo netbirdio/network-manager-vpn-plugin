@@ -638,9 +638,9 @@ func openSSOBrowser(hints hintValues) {
 	if !ok || !hasDesktopOpenEnvironment() {
 		return
 	}
-	notifyOpeningSSOBrowser()
 	cmd := browserCommand(uri, nil, nil)
 	if err := cmd.Start(); err == nil {
+		notifyOpeningSSOBrowser()
 		go func() { _ = cmd.Wait() }()
 	}
 }
@@ -741,8 +741,13 @@ func hasDesktopOpenEnvironment() bool {
 }
 
 func hasSessionBusEnvironment() bool {
-	if address := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); address != "" && address != "autolaunch:" {
-		return true
+	if address := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); address != "" {
+		for _, candidate := range strings.Split(address, ",") {
+			candidate = strings.TrimSpace(candidate)
+			if candidate != "" && !strings.HasPrefix(candidate, "autolaunch:") {
+				return true
+			}
+		}
 	}
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 		if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err == nil {
