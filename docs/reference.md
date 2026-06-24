@@ -172,6 +172,7 @@ Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball in
 | `/etc/NetworkManager/VPN/nm-netbird-service.name` | VPN service metadata. NetworkManager discovers the plugin through this file. |
 | `/usr/share/dbus-1/system.d/nm-netbird-service.conf` | D-Bus system policy for `.deb`/`.rpm` packages (root-only access). Tarball installs default to `/etc/dbus-1/system.d/nm-netbird-service.conf` unless `DBUS_POLICY_DIR` is overridden. |
 | `/etc/NetworkManager/conf.d/90-netbird-unmanaged.conf` | Marks `wt*` interfaces as unmanaged so NetworkManager does not touch them. |
+| `/usr/share/selinux/packages/nm_netbird.pp` | SELinux policy module for RPM packages. The RPM post-install script installs it with `semodule` when available. |
 | `/usr/share/doc/network-manager-netbird/LICENSE` | License text for `.deb`/`.rpm` packages. Tarball releases include `LICENSE` at the archive root. |
 
 ## Build targets
@@ -185,6 +186,9 @@ All targets are run via `task <name>`. See `Taskfile.yml` for full definitions.
 | `build:go` | Build `nm-netbird-service` and `nm-netbird-auth-dialog`. |
 | `build:properties` | Build the libnm loader (`libnm-vpn-plugin-netbird.so`) and GTK 3 editor. |
 | `build:properties:gtk4` | Build the GTK 4 editor. |
+| `selinux:build` | Build the `nm_netbird` SELinux policy module for RPM packaging/manual install. |
+| `selinux:install` | Install the built SELinux policy module with `semodule`. |
+| `selinux:clean` | Remove generated SELinux policy build artifacts. |
 | `test` | Run Go unit tests + editor model tests. |
 | `test:go` | Run Go unit tests. |
 | `test:properties` | Run editor settings mapping tests. |

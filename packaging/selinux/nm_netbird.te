@@ -1,0 +1,54 @@
+policy_module(nm_netbird, 1.0.0)
+
+require {
+	type init_t;
+	type NetworkManager_t;
+	type system_dbusd_t;
+	type cgroup_t;
+	class dbus { acquire_svc send_msg };
+	class dir { getattr search };
+	class file { execute execute_no_trans getattr map open read };
+	class sock_file { getattr open read write };
+	class unix_stream_socket { connectto create getattr getopt ioctl read setopt shutdown write };
+}
+
+type nm_netbird_t;
+type nm_netbird_exec_t;
+init_daemon_domain(nm_netbird_t, nm_netbird_exec_t)
+domain_auto_trans(NetworkManager_t, nm_netbird_exec_t, nm_netbird_t)
+
+type nm_netbird_runtime_t;
+files_pid_file(nm_netbird_runtime_t)
+
+allow NetworkManager_t nm_netbird_exec_t:file { execute execute_no_trans getattr map open read };
+
+allow nm_netbird_t self:unix_stream_socket { create getattr getopt ioctl read setopt shutdown write };
+
+allow nm_netbird_t cgroup_t:dir { getattr search };
+auth_read_passwd(nm_netbird_t)
+allow nm_netbird_t nm_netbird_runtime_t:sock_file { getattr open read write };
+
+dbus_system_bus_client(nm_netbird_t)
+allow nm_netbird_t system_dbusd_t:dbus acquire_svc;
+
+allow NetworkManager_t nm_netbird_t:dbus send_msg;
+allow nm_netbird_t NetworkManager_t:dbus send_msg;
+
+# Some distributions keep NetworkManager VPN helpers in NetworkManager_t.
+# Keep this limited to the labeled NetBird daemon socket.
+allow NetworkManager_t nm_netbird_runtime_t:sock_file { getattr open read write };
+
+# The packaged NetBird daemon does not ship a stable SELinux type on all
+# distributions. The socket path is still constrained above to /run/netbird.sock,
+# but connectto is checked against the daemon process type.
+allow nm_netbird_t init_t:unix_stream_socket connectto;
+allow NetworkManager_t init_t:unix_stream_socket connectto;
+
+optional_policy(`
+	require {
+		type unconfined_service_t;
+	}
+
+	allow nm_netbird_t unconfined_service_t:unix_stream_socket connectto;
+	allow NetworkManager_t unconfined_service_t:unix_stream_socket connectto;
+')

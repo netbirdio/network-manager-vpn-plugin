@@ -147,6 +147,9 @@ nfpms:
       - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
         dst: /etc/NetworkManager/conf.d/90-netbird-unmanaged.conf
         type: config|noreplace
+      - src: packaging/selinux/nm_netbird.pp
+        dst: /usr/share/selinux/packages/nm_netbird.pp
+        packager: rpm
       - src: LICENSE
         dst: /usr/share/doc/network-manager-netbird/LICENSE
     scripts:

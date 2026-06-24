@@ -1,0 +1,6 @@
+# NetworkManager NetBird file contexts.
+
+/usr/libexec/nm-netbird-service	--	gen_context(system_u:object_r:nm_netbird_exec_t,s0)
+/usr/libexec/nm-netbird-auth-dialog -- gen_context(system_u:object_r:nm_netbird_exec_t,s0)
+/run/netbird\.sock	-s	gen_context(system_u:object_r:nm_netbird_runtime_t,s0)
+/var/run/netbird\.sock	-s	gen_context(system_u:object_r:nm_netbird_runtime_t,s0)

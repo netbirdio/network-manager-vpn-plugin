@@ -52,7 +52,7 @@ jobs:
       - name: Install C editor dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev selinux-policy-dev
 
       - name: Install modules
         run: go mod tidy
@@ -102,6 +102,9 @@ jobs:
             $(pkg-config --cflags --libs libnm)
           NETBIRD_EDITOR_PLUGIN_PATH="$PWD/bin/libnm-vpn-plugin-netbird.so" ./bin/nm-netbird-editor-plugin-test
 
+      - name: Build SELinux policy module
+        run: make -C packaging/selinux
+
       - name: Run race tests
         run: go test -race ./...
 
@@ -146,10 +149,13 @@ jobs:
       - name: Install properties editor dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev selinux-policy-dev
 
       - name: Build properties editor modules
         run: scripts/build-release-properties.sh
+
+      - name: Build SELinux policy module
+        run: make -C packaging/selinux
 
       - name: Build snapshot artifacts
         uses: goreleaser/goreleaser-action@v6
@@ -250,10 +256,13 @@ jobs:
       - name: Install properties editor dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev
+          sudo apt-get install -y build-essential pkg-config libnm-dev libgtk-3-dev libnma-dev libgtk-4-dev libnma-gtk4-dev selinux-policy-dev
 
       - name: Build properties editor modules
         run: scripts/build-release-properties.sh
+
+      - name: Build SELinux policy module
+        run: make -C packaging/selinux
 
       - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6

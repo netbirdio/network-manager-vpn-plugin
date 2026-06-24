@@ -11,6 +11,7 @@ vars:
   BUS_NAME: org.freedesktop.NetworkManager.netbird
   OBJECT_PATH: /org/freedesktop/NetworkManager/VPN/Plugin
   PLUGIN_IFACE: org.freedesktop.NetworkManager.VPN.Plugin
+  SELINUX_POLICY_DIR: packaging/selinux
 
 tasks:
   deps:install:
@@ -123,6 +124,22 @@ tasks:
   build:
     desc: Build the NetworkManager VPN plugin binaries and editor plugin
     deps: [build:go, build:properties]
+
+  selinux:build:
+    desc: Build the SELinux policy module
+    cmds:
+      - make -C {{.SELINUX_POLICY_DIR}}
+
+  selinux:install:
+    desc: Install the SELinux policy module with semodule
+    deps: [selinux:build]
+    cmds:
+      - sudo semodule -i {{.SELINUX_POLICY_DIR}}/nm_netbird.pp
+
+  selinux:clean:
+    desc: Remove generated SELinux policy build artifacts
+    cmds:
+      - make -C {{.SELINUX_POLICY_DIR}} clean
 
   build:go:
     desc: Build the Go service and auth-dialog binaries
