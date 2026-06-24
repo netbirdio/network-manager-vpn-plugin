@@ -160,6 +160,9 @@ nmcli connection show netbird
 journalctl -u nm-netbird-service -f
 journalctl -u netbird -f
 
+# Auth-dialog/browser smoke test
+/usr/libexec/nm-netbird-auth-dialog --test-browser 'https://login.netbird.io/device'
+
 # Development D-Bus introspection
 task dbus:introspect
 task dbus:state

@@ -163,6 +163,7 @@ nfpms:
           - libnm0
           - libgtk-3-0
           - libnma0
+          - xdg-utils
           - libgtk-4-1
           - libnma-gtk4-0
       rpm:
@@ -172,6 +173,7 @@ nfpms:
           - NetworkManager-libnm
           - gtk3
           - libnma
+          - xdg-utils
           - gtk4
           - libnma-gtk4
 

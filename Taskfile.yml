@@ -43,6 +43,7 @@ tasks:
             libgtk-3-dev
             libnma-dev
             libglib2.0-bin
+            xdg-utils
             dbus
             network-manager
           )
@@ -59,6 +60,7 @@ tasks:
             gtk3
             libnma
             glib2
+            xdg-utils
             dbus
           )
           if is_enabled "$with_gtk4"; then
@@ -76,6 +78,7 @@ tasks:
             gtk3-devel
             libnma-devel
             glib2
+            xdg-utils
             dbus-daemon
             NetworkManager
           )
@@ -91,6 +94,7 @@ tasks:
             gtk3-devel
             libnma-devel
             glib2
+            xdg-utils
             dbus-daemon
             NetworkManager
           )

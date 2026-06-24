@@ -3,6 +3,7 @@ package nmauthdialog
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/godbus/dbus/v5"
 )
 
 const (
@@ -45,14 +49,19 @@ const (
 	secretValTag = "SECRET_VAL="
 )
 
+const desktopNotificationTimeout = 750 * time.Millisecond
+
 type Options struct {
-	UUID             string
-	Name             string
-	Service          string
-	AllowInteraction bool
-	ExternalUIMode   bool
-	Reprompt         bool
-	Hints            []string
+	UUID               string
+	Name               string
+	Service            string
+	AllowInteraction   bool
+	ExternalUIMode     bool
+	Reprompt           bool
+	Hints              []string
+	TestBrowserURL     string
+	TestBrowserTimeout time.Duration
+	TestBrowserForce   bool
 }
 
 type stringList []string
@@ -85,6 +94,9 @@ func ParseArgs(args []string) (Options, error) {
 	flags.BoolVar(&opts.Reprompt, "r", false, "reprompt for secrets")
 	flags.Var(&hints, "hint", "secret hint from NetworkManager")
 	flags.Var(&hints, "t", "secret hint from NetworkManager")
+	flags.StringVar(&opts.TestBrowserURL, "test-browser", "", "open an SSO URL with xdg-open and exit")
+	flags.DurationVar(&opts.TestBrowserTimeout, "test-browser-timeout", 5*time.Second, "maximum time to wait for xdg-open in --test-browser mode")
+	flags.BoolVar(&opts.TestBrowserForce, "test-browser-force", false, "try xdg-open even if no desktop environment is detected")
 
 	if err := flags.Parse(args); err != nil {
 		return Options{}, err
@@ -94,6 +106,9 @@ func ParseArgs(args []string) (Options, error) {
 	}
 
 	opts.Hints = []string(hints)
+	if strings.TrimSpace(opts.TestBrowserURL) != "" {
+		return opts, nil
+	}
 	if strings.TrimSpace(opts.UUID) == "" {
 		return Options{}, errors.New("missing --uuid")
 	}
@@ -121,6 +136,14 @@ func Run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
+	}
+
+	if strings.TrimSpace(opts.TestBrowserURL) != "" {
+		if err := runBrowserTest(stdout, stderr, opts); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 
 	details, err := readVPNDetails(stdin)
@@ -582,16 +605,84 @@ func formatSSODescription(hints hintValues) string {
 
 var execCommand = exec.Command
 
+var notifyOpeningSSOBrowser = func() {
+	_ = sendDesktopNotification(
+		"NetBird",
+		"network-vpn",
+		"Opening browser for NetBird SSO",
+		"Complete the NetBird login in your browser.",
+		2000,
+	)
+}
+
+func runBrowserTest(stdout io.Writer, stderr io.Writer, opts Options) error {
+	uri, ok := validateSSOBrowserURI(opts.TestBrowserURL)
+	if !ok {
+		return fmt.Errorf("invalid --test-browser URL %q; expected http or https URL", opts.TestBrowserURL)
+	}
+	if opts.TestBrowserTimeout <= 0 {
+		return errors.New("--test-browser-timeout must be positive")
+	}
+	if !opts.TestBrowserForce && !hasDesktopOpenEnvironment() {
+		return errors.New("no desktop environment detected; set DISPLAY, WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, or use --test-browser-force")
+	}
+	if err := openBrowserAndWait(uri, opts.TestBrowserTimeout, stdout, stderr); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(stdout, "opened %s\n", uri)
+	return err
+}
+
 func openSSOBrowser(hints hintValues) {
 	uri, ok := validateSSOBrowserURI(firstNonEmpty(hints.value(keyNetBirdSSOVerificationFull), hints.value(keyNetBirdSSOVerificationURI)))
 	if !ok || !hasDesktopOpenEnvironment() {
 		return
 	}
+	cmd := browserCommand(uri, nil, nil)
+	if err := cmd.Start(); err == nil {
+		notifyOpeningSSOBrowser()
+		go func() { _ = cmd.Wait() }()
+	}
+}
+
+func openBrowserAndWait(uri string, timeout time.Duration, stdout io.Writer, stderr io.Writer) error {
+	cmd := browserCommand(uri, stdout, stderr)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start xdg-open: %w", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("xdg-open failed: %w", err)
+		}
+		return nil
+	case <-timer.C:
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+		return fmt.Errorf("xdg-open timed out after %s", timeout)
+	}
+}
+
+func browserCommand(uri string, stdout io.Writer, stderr io.Writer) *exec.Cmd {
 	cmd := execCommand("xdg-open", uri)
-	cmd.Stdin = strings.NewReader("")
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	_ = cmd.Start()
+	// Leave nil streams nil so os/exec connects them to /dev/null. This is
+	// important for fire-and-forget browser launches: using io.Discard with
+	// Start without a guaranteed Wait creates pipes that can close when the auth
+	// dialog exits, which can make xdg-open fail during slow first launches.
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd
 }
 
 func validateSSOBrowserURI(raw string) (string, bool) {
@@ -611,12 +702,52 @@ func validateSSOBrowserURI(raw string) (string, bool) {
 	}
 }
 
+func sendDesktopNotification(appName string, icon string, summary string, body string, expireTimeout int32) error {
+	if !hasSessionBusEnvironment() {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), desktopNotificationTimeout)
+	defer cancel()
+
+	conn, err := dbus.SessionBus()
+	if err != nil {
+		return err
+	}
+	call := conn.Object(
+		"org.freedesktop.Notifications",
+		dbus.ObjectPath("/org/freedesktop/Notifications"),
+	).CallWithContext(
+		ctx,
+		"org.freedesktop.Notifications.Notify",
+		0,
+		appName,
+		uint32(0),
+		icon,
+		summary,
+		body,
+		[]string{},
+		map[string]dbus.Variant{},
+		expireTimeout,
+	)
+	return call.Err
+}
+
 func hasDesktopOpenEnvironment() bool {
 	if os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "" {
 		return true
 	}
-	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") != "" {
-		return true
+	return hasSessionBusEnvironment()
+}
+
+func hasSessionBusEnvironment() bool {
+	if address := os.Getenv("DBUS_SESSION_BUS_ADDRESS"); address != "" {
+		for _, candidate := range strings.Split(address, ",") {
+			candidate = strings.TrimSpace(candidate)
+			if candidate != "" && !strings.HasPrefix(candidate, "autolaunch:") {
+				return true
+			}
+		}
 	}
 	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 		if _, err := os.Stat(filepath.Join(runtimeDir, "bus")); err == nil {
