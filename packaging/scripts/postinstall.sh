@@ -46,6 +46,39 @@ reload_networkmanager() {
   echo "warning: could not reload NetworkManager automatically; restart NetworkManager if vpn-type netbird is not visible" >&2
 }
 
+install_selinux_policy() {
+  policy=/usr/share/selinux/packages/nm_netbird.pp
+  marker_dir=/var/lib/network-manager-netbird
+  marker="$marker_dir/selinux-policy-installed"
+
+  [ -f "$policy" ] || return 0
+
+  if ! command -v semodule >/dev/null 2>&1; then
+    echo "warning: SELinux policy module is packaged at $policy but semodule was not found" >&2
+    return 0
+  fi
+
+  if semodule -i "$policy" >/dev/null 2>&1; then
+    mkdir -p "$marker_dir"
+    : >"$marker"
+    echo "installed SELinux policy module nm_netbird"
+  else
+    echo "warning: could not install SELinux policy module $policy" >&2
+    return 0
+  fi
+
+  if command -v restorecon >/dev/null 2>&1; then
+    for path in \
+      /usr/libexec/nm-netbird-service \
+      /usr/libexec/nm-netbird-auth-dialog \
+      /run/netbird.sock \
+      /var/run/netbird.sock; do
+      [ -e "$path" ] && restorecon "$path" >/dev/null 2>&1 || true
+    done
+  fi
+}
+
+install_selinux_policy
 reload_dbus_policy
 reload_networkmanager
 

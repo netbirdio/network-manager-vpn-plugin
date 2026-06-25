@@ -5,3 +5,9 @@
 /.vm/
 /nm-netbird-service
 /fake-netbird-daemon
+/packaging/selinux/*.mod
+/packaging/selinux/*.mod.fc
+/packaging/selinux/*.if
+/packaging/selinux/*.pp
+/packaging/selinux/*.fc.tmp
+/packaging/selinux/tmp/

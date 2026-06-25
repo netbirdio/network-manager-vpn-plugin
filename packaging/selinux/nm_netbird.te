@@ -1,0 +1,54 @@
+policy_module(nm_netbird, 1.0.0)
+
+require {
+	type NetworkManager_t;
+	type system_dbusd_t;
+	type cgroup_t;
+	class dbus { acquire_svc send_msg };
+	class dir { getattr search };
+	class file { execute getattr map open read };
+	class sock_file { getattr open read write };
+	class unix_stream_socket { connectto create getattr getopt ioctl read setopt shutdown write };
+}
+
+type nm_netbird_t;
+type nm_netbird_exec_t;
+init_daemon_domain(nm_netbird_t, nm_netbird_exec_t)
+
+# NetworkManager launches the VPN helper, which should run in its own domain.
+domtrans_pattern(NetworkManager_t, nm_netbird_exec_t, nm_netbird_t)
+
+type nm_netbird_runtime_t;
+ifdef(`files_runtime_file',`
+	files_runtime_file(nm_netbird_runtime_t)
+',`
+	files_pid_file(nm_netbird_runtime_t)
+')
+
+# Opt-in peer attribute for a distro or site-local policy that labels the
+# NetBird daemon with a dedicated SELinux domain.
+attribute nm_netbird_daemon_domain;
+
+allow nm_netbird_t self:unix_stream_socket { create getattr getopt ioctl read setopt shutdown write };
+
+allow nm_netbird_t cgroup_t:dir { getattr search };
+auth_use_nsswitch(nm_netbird_t)
+allow nm_netbird_t nm_netbird_runtime_t:sock_file { getattr open read write };
+
+dbus_system_bus_client(nm_netbird_t)
+allow nm_netbird_t system_dbusd_t:dbus acquire_svc;
+
+allow NetworkManager_t nm_netbird_t:dbus send_msg;
+allow nm_netbird_t NetworkManager_t:dbus send_msg;
+
+# Some distributions keep NetworkManager VPN helpers in NetworkManager_t.
+# Keep this limited to the labeled NetBird daemon socket.
+allow NetworkManager_t nm_netbird_runtime_t:sock_file { getattr open read write };
+
+# The packaged NetBird daemon does not currently provide a distro-neutral
+# SELinux domain in this repository. Do not grant blanket connectto permissions
+# to init_t or unconfined_service_t because SELinux cannot scope connectto to
+# only the /run/netbird.sock path. The NetBird daemon package or site-local
+# policy can opt the daemon's actual SELinux type into nm_netbird_daemon_domain.
+allow nm_netbird_t nm_netbird_daemon_domain:unix_stream_socket connectto;
+allow NetworkManager_t nm_netbird_daemon_domain:unix_stream_socket connectto;
