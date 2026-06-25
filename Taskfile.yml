@@ -138,7 +138,7 @@ tasks:
     desc: Install the SELinux policy module with semodule
     deps: [selinux:build]
     cmds:
-      - sudo semodule -i {{.SELINUX_POLICY_DIR}}/nm_netbird.pp
+      - sudo make -C {{.SELINUX_POLICY_DIR}} install
 
   selinux:clean:
     desc: Remove generated SELinux policy build artifacts

@@ -18,4 +18,4 @@ install: $(MODULE).pp
 
 clean:
 	rm -rf tmp
-	rm -f $(MODULE).pp $(MODULE).mod $(MODULE).mod.fc $(MODULE).fc.tmp
+	rm -f $(MODULE).pp $(MODULE).mod $(MODULE).mod.fc $(MODULE).if $(MODULE).fc.tmp
