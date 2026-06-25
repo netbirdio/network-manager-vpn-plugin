@@ -70,24 +70,24 @@ func TestGRPCClientWrapper(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, daemonclient.ProfileRef{ID: "generated-id", ProfileName: "new", Username: "alice"}, created)
 
-	profileRef := daemonclient.ProfileRef{ID: "profile-id", ProfileName: "prod", Username: "alice"}
+	profileRef := daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}
 	switched, err := client.SwitchProfile(context.Background(), profileRef)
 	require.NoError(t, err)
-	require.Equal(t, profileRef, switched)
+	require.Equal(t, daemonclient.ProfileRef{ID: "profile-id", ProfileName: "prod", Username: "alice"}, switched)
 
 	login, err := client.Login(context.Background(), daemonclient.LoginRequest{
 		SetupKey:      "setup",
 		ManagementURL: "https://api.example.com",
-		Profile:       profileRef,
+		Profile:       switched,
 	})
 	require.NoError(t, err)
 	require.True(t, login.NeedsSSOLogin)
 	require.Equal(t, "CODE", login.UserCode)
 
-	require.NoError(t, client.UpdateProfile(context.Background(), daemonclient.UpdateProfileRequest{Profile: profileRef, ManagementURL: "https://api.example.com"}))
-	require.NoError(t, client.Up(context.Background(), profileRef))
+	require.NoError(t, client.UpdateProfile(context.Background(), daemonclient.UpdateProfileRequest{Profile: switched, ManagementURL: "https://api.example.com"}))
+	require.NoError(t, client.Up(context.Background(), switched))
 
-	config, err := client.GetConfig(context.Background(), profileRef)
+	config, err := client.GetConfig(context.Background(), switched)
 	require.NoError(t, err)
 	require.Equal(t, "wt0", config.GetInterfaceName())
 
@@ -113,7 +113,7 @@ func TestGRPCClientWrapper(t *testing.T) {
 	defer server.mu.Unlock()
 	require.Equal(t, "new", server.addProfile.GetProfileName())
 	require.Equal(t, "alice", server.addProfile.GetUsername())
-	require.Equal(t, "profile-id", server.switchProfile.GetProfileName())
+	require.Equal(t, "prod", server.switchProfile.GetProfileName())
 	require.Equal(t, "alice", server.switchProfile.GetUsername())
 	require.Equal(t, "setup", server.login.GetSetupKey())
 	require.Equal(t, "profile-id", server.login.GetProfileName())

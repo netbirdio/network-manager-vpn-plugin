@@ -51,6 +51,8 @@ allow NetworkManager_t nm_netbird_runtime_t:sock_file { getattr open read write 
 # policy can opt the daemon's actual type into nm_netbird_daemon_domain.
 allow nm_netbird_t nm_netbird_daemon_domain:unix_stream_socket connectto;
 allow NetworkManager_t nm_netbird_daemon_domain:unix_stream_socket connectto;
+type_transition nm_netbird_daemon_domain var_run_t:sock_file nm_netbird_runtime_t "netbird.sock";
+allow nm_netbird_daemon_domain nm_netbird_runtime_t:sock_file { create getattr open read setattr unlink write };
 
 # Fedora's upstream NetBird RPM can run netbird.service as unconfined_service_t.
 # SELinux checks unix_stream_socket connectto against the server process domain,

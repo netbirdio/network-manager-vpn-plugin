@@ -454,6 +454,7 @@ func TestConnectCreatesMissingProfileAndUsesReturnedID(t *testing.T) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	require.Equal(t, []string{"add-profile", "switch-profile", "login", "update-profile", "up", "get-config"}, fake.operations)
+	require.Equal(t, []string{"alice"}, fake.listProfileUsernames)
 	require.Equal(t, []daemonclient.ProfileRef{displayRef}, fake.addProfileRequests)
 	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.switchProfileRequests)
 	require.Len(t, fake.loginRequests, 1)
@@ -494,6 +495,7 @@ func TestConnectReusesExistingProfileIDWithoutCreatingDuplicate(t *testing.T) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	require.Empty(t, fake.addProfileRequests)
+	require.Equal(t, []string{"alice"}, fake.listProfileUsernames)
 	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.switchProfileRequests)
 	require.Len(t, fake.loginRequests, 1)
 	require.Equal(t, idRef, fake.loginRequests[0].Profile)
@@ -526,6 +528,7 @@ func TestConnectFailsSafelyWhenProfileDisplayNameIsDuplicate(t *testing.T) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	require.Empty(t, fake.addProfileRequests)
+	require.Equal(t, []string{"alice"}, fake.listProfileUsernames)
 	require.Empty(t, fake.switchProfileRequests)
 	require.Empty(t, fake.loginRequests)
 	require.Empty(t, fake.upRequests)
@@ -1505,6 +1508,7 @@ type fakeDaemonClient struct {
 	loginRequests         []daemonclient.LoginRequest
 	loginActiveProfiles   []daemonclient.ProfileRef
 	addProfileRequests    []daemonclient.ProfileRef
+	listProfileUsernames  []string
 	switchProfileRequests []daemonclient.ProfileRef
 	updateProfileRequests []daemonclient.UpdateProfileRequest
 	upRequests            []daemonclient.ProfileRef
@@ -1680,6 +1684,7 @@ func (f *fakeDaemonClient) GetActiveProfile(ctx context.Context) (daemonclient.P
 func (f *fakeDaemonClient) ListProfiles(ctx context.Context, username string) ([]daemonclient.Profile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.listProfileUsernames = append(f.listProfileUsernames, username)
 	return append([]daemonclient.Profile(nil), f.profiles...), nil
 }
 

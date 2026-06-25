@@ -459,7 +459,7 @@ func (s *Service) prepareDaemonProfile(ctx context.Context, client daemonclient.
 }
 
 func (s *Service) switchDaemonProfile(ctx context.Context, client daemonclient.Client, profile daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
-	if profile.Empty() {
+	if profile.Handle() == "" {
 		return profile, nil
 	}
 	resolved, err := client.SwitchProfile(ctx, profile)

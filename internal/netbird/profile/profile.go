@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/netbirdio/netbird/client/proto"
 	"github.com/netbirdio/network-manager-plugin/internal/netbird/daemonclient"
@@ -32,6 +33,8 @@ type Client interface {
 // connected or connecting. It intentionally avoids profile creation so callers
 // can fill fallback usernames before EnsureExists creates missing profiles.
 func PrepareActivation(ctx context.Context, client Client, desired daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
+	desired = trimProfileRef(desired)
+
 	features, err := client.GetFeatures(ctx)
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("resolve profile features: %w", err)
@@ -47,6 +50,7 @@ func PrepareActivation(ctx context.Context, client Client, desired daemonclient.
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("resolve active profile: %w", err)
 	}
+	active = trimProfileRef(active)
 
 	if err := checkRunningConflict(ctx, client, active, desired); err != nil {
 		return daemonclient.ProfileRef{}, err
@@ -59,6 +63,8 @@ func PrepareActivation(ctx context.Context, client Client, desired daemonclient.
 // SwitchProfile/Login/SetConfig/Up/GetConfig can use it. The returned reference
 // keeps the stable display name and uses the daemon-generated ID when available.
 func EnsureExists(ctx context.Context, client Client, desired daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
+	desired = trimProfileRef(desired)
+
 	features, err := client.GetFeatures(ctx)
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("resolve profile features: %w", err)
@@ -82,6 +88,7 @@ func EnsureExists(ctx context.Context, client Client, desired daemonclient.Profi
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("create profile %s: %w", desired, err)
 	}
+	created = trimProfileRef(created)
 	if created.ProfileName == "" {
 		created.ProfileName = desired.ProfileName
 	}
@@ -98,6 +105,8 @@ func EnsureExists(ctx context.Context, client Client, desired daemonclient.Profi
 // not running; a connected or connecting different profile remains a safe
 // failure instead of an implicit active-session switch.
 func Resolve(ctx context.Context, client Client, desired daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
+	desired = trimProfileRef(desired)
+
 	features, err := client.GetFeatures(ctx)
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("resolve profile features: %w", err)
@@ -110,6 +119,7 @@ func Resolve(ctx context.Context, client Client, desired daemonclient.ProfileRef
 	if err != nil {
 		return daemonclient.ProfileRef{}, fmt.Errorf("resolve active profile: %w", err)
 	}
+	active = trimProfileRef(active)
 	if desired.Empty() {
 		return active, nil
 	}
@@ -130,6 +140,7 @@ func Resolve(ctx context.Context, client Client, desired daemonclient.ProfileRef
 }
 
 func resolveExistingProfile(ctx context.Context, client Client, desired daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
+	desired = trimProfileRef(desired)
 	if desired.Handle() == "" || desired.Username == "" {
 		return desired, nil
 	}
@@ -145,7 +156,7 @@ func resolveExistingProfile(ctx context.Context, client Client, desired daemoncl
 		case 0:
 			return daemonclient.ProfileRef{}, fmt.Errorf("%w: %s", ErrNotFound, desired)
 		case 1:
-			return daemonclient.ProfileRef{ID: matches[0].ID, ProfileName: matches[0].Name, Username: desired.Username}, nil
+			return profileRefFromMatch(matches[0], desired.Username), nil
 		default:
 			return daemonclient.ProfileRef{}, fmt.Errorf("%w: %s has %d matches", ErrAmbiguous, desired, len(matches))
 		}
@@ -156,16 +167,17 @@ func resolveExistingProfile(ctx context.Context, client Client, desired daemoncl
 	case 0:
 		return daemonclient.ProfileRef{}, fmt.Errorf("%w: %s", ErrNotFound, desired)
 	case 1:
-		return daemonclient.ProfileRef{ID: matches[0].ID, ProfileName: matches[0].Name, Username: desired.Username}, nil
+		return profileRefFromMatch(matches[0], desired.Username), nil
 	default:
 		return daemonclient.ProfileRef{}, fmt.Errorf("%w: %s has %d matches", ErrAmbiguous, desired, len(matches))
 	}
 }
 
 func matchingProfilesByName(profiles []daemonclient.Profile, name string) []daemonclient.Profile {
+	name = strings.TrimSpace(name)
 	matches := []daemonclient.Profile{}
 	for _, profile := range profiles {
-		if profile.Name == name {
+		if strings.TrimSpace(profile.Name) == name {
 			matches = append(matches, profile)
 		}
 	}
@@ -173,16 +185,27 @@ func matchingProfilesByName(profiles []daemonclient.Profile, name string) []daem
 }
 
 func matchingProfilesByID(profiles []daemonclient.Profile, id string) []daemonclient.Profile {
+	id = strings.TrimSpace(id)
 	matches := []daemonclient.Profile{}
 	for _, profile := range profiles {
-		if profile.ID == id {
+		if strings.TrimSpace(profile.ID) == id {
 			matches = append(matches, profile)
 		}
 	}
 	return matches
 }
 
+func profileRefFromMatch(match daemonclient.Profile, username string) daemonclient.ProfileRef {
+	return daemonclient.ProfileRef{
+		ID:          strings.TrimSpace(match.ID),
+		ProfileName: strings.TrimSpace(match.Name),
+		Username:    strings.TrimSpace(username),
+	}
+}
+
 func fillMissingProfileFields(active, desired daemonclient.ProfileRef) daemonclient.ProfileRef {
+	active = trimProfileRef(active)
+	desired = trimProfileRef(desired)
 	if active.Empty() || !active.MatchesDesired(desired) {
 		return desired
 	}
@@ -198,7 +221,16 @@ func fillMissingProfileFields(active, desired daemonclient.ProfileRef) daemoncli
 	return desired
 }
 
+func trimProfileRef(ref daemonclient.ProfileRef) daemonclient.ProfileRef {
+	ref.ID = strings.TrimSpace(ref.ID)
+	ref.ProfileName = strings.TrimSpace(ref.ProfileName)
+	ref.Username = strings.TrimSpace(ref.Username)
+	return ref
+}
+
 func checkRunningConflict(ctx context.Context, client Client, active, desired daemonclient.ProfileRef) error {
+	active = trimProfileRef(active)
+	desired = trimProfileRef(desired)
 	if active.Empty() || active.MatchesDesired(desired) {
 		return nil
 	}

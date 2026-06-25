@@ -45,6 +45,25 @@ func TestEnsureExistsFallsBackToDisplayNameWhenGeneratedIDIsEmpty(t *testing.T) 
 	require.Equal(t, []daemonclient.ProfileRef{desired}, client.addRequests)
 }
 
+func TestEnsureExistsTrimsProfileFieldsBeforeLookupAndCreate(t *testing.T) {
+	client := &fakeProfileClient{addResponse: daemonclient.ProfileRef{ID: " generated-id "}}
+	desired := daemonclient.ProfileRef{ProfileName: " nm-uuid ", Username: " alice "}
+	got, err := profile.EnsureExists(context.Background(), client, desired)
+	require.NoError(t, err)
+	require.Equal(t, daemonclient.ProfileRef{ID: "generated-id", ProfileName: "nm-uuid", Username: "alice"}, got)
+	require.Equal(t, []string{"alice"}, client.listUsernames)
+	require.Equal(t, []daemonclient.ProfileRef{{ProfileName: "nm-uuid", Username: "alice"}}, client.addRequests)
+}
+
+func TestEnsureExistsTreatsWhitespaceOnlyProfileNameAsMissing(t *testing.T) {
+	client := &fakeProfileClient{}
+	got, err := profile.EnsureExists(context.Background(), client, daemonclient.ProfileRef{ProfileName: "   ", Username: " alice "})
+	require.NoError(t, err)
+	require.Equal(t, daemonclient.ProfileRef{Username: "alice"}, got)
+	require.Empty(t, client.listUsernames)
+	require.Empty(t, client.addRequests)
+}
+
 func TestEnsureExistsDuplicateDisplayNamesFailSafely(t *testing.T) {
 	client := &fakeProfileClient{profiles: []daemonclient.Profile{
 		{ID: "id-1", Name: "nm-uuid"},
