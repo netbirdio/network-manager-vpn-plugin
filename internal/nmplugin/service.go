@@ -439,28 +439,34 @@ func (s *Service) finishActivationAttempt(
 }
 
 func (s *Service) prepareDaemonProfile(ctx context.Context, client daemonclient.Client, settings activationSettings) (activationSettings, error) {
+	if settings.Profile.ProfileName != "" && settings.Profile.Username == "" {
+		settings.Profile.Username = currentProcessUsername()
+	}
 	preparedProfile, err := profile.PrepareActivation(ctx, client, settings.Profile)
 	if err != nil {
 		return settings, err
 	}
 	settings.Profile = preparedProfile
-	if settings.Profile.ProfileName != "" && settings.Profile.Username == "" {
-		settings.Profile.Username = currentProcessUsername()
+	settings.Profile, err = profile.EnsureExists(ctx, client, settings.Profile)
+	if err != nil {
+		return settings, err
 	}
-	if err := s.switchDaemonProfile(ctx, client, settings.Profile); err != nil {
+	settings.Profile, err = s.switchDaemonProfile(ctx, client, settings.Profile)
+	if err != nil {
 		return settings, err
 	}
 	return settings, nil
 }
 
-func (s *Service) switchDaemonProfile(ctx context.Context, client daemonclient.Client, profile daemonclient.ProfileRef) error {
+func (s *Service) switchDaemonProfile(ctx context.Context, client daemonclient.Client, profile daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
 	if profile.Empty() {
-		return nil
+		return profile, nil
 	}
-	if err := client.SwitchProfile(ctx, profile); err != nil {
-		return fmt.Errorf("switch daemon profile: %w", err)
+	resolved, err := client.SwitchProfile(ctx, profile)
+	if err != nil {
+		return daemonclient.ProfileRef{}, fmt.Errorf("switch daemon profile: %w", err)
 	}
-	return nil
+	return resolved, nil
 }
 
 func (s *Service) updateDaemonProfile(ctx context.Context, client daemonclient.Client, settings activationSettings) error {

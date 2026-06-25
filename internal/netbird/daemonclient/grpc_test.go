@@ -51,6 +51,82 @@ func TestGRPCClientClassifiesUnauthenticated(t *testing.T) {
 }
 
 func TestGRPCClientWrapper(t *testing.T) {
+	server := &fakeDaemonServer{addProfileID: "generated-id", switchProfileID: "profile-id"}
+	address, stop := startFakeDaemonServer(t, server)
+	defer stop()
+
+	factory := daemonclient.NewFactory(daemonclient.Options{
+		Address:     address,
+		DialTimeout: time.Second,
+		RPCTimeout:  time.Second,
+	})
+	client, err := factory.NewClient(context.Background())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	created, err := client.AddProfile(context.Background(), daemonclient.ProfileRef{ProfileName: "new", Username: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, daemonclient.ProfileRef{ID: "generated-id", ProfileName: "new", Username: "alice"}, created)
+
+	profileRef := daemonclient.ProfileRef{ID: "profile-id", ProfileName: "prod", Username: "alice"}
+	switched, err := client.SwitchProfile(context.Background(), profileRef)
+	require.NoError(t, err)
+	require.Equal(t, profileRef, switched)
+
+	login, err := client.Login(context.Background(), daemonclient.LoginRequest{
+		SetupKey:      "setup",
+		ManagementURL: "https://api.example.com",
+		Profile:       profileRef,
+	})
+	require.NoError(t, err)
+	require.True(t, login.NeedsSSOLogin)
+	require.Equal(t, "CODE", login.UserCode)
+
+	require.NoError(t, client.UpdateProfile(context.Background(), daemonclient.UpdateProfileRequest{Profile: profileRef, ManagementURL: "https://api.example.com"}))
+	require.NoError(t, client.Up(context.Background(), profileRef))
+
+	config, err := client.GetConfig(context.Background(), profileRef)
+	require.NoError(t, err)
+	require.Equal(t, "wt0", config.GetInterfaceName())
+
+	status, err := client.Status(context.Background(), daemonclient.StatusOptions{GetFullPeerStatus: true, WaitForReady: true})
+	require.NoError(t, err)
+	require.Equal(t, "connected", status.GetStatus())
+
+	features, err := client.GetFeatures(context.Background())
+	require.NoError(t, err)
+	require.False(t, features.DisableProfiles)
+
+	active, err := client.GetActiveProfile(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, daemonclient.ProfileRef{ID: "profile-id", ProfileName: "prod", Username: "alice"}, active)
+
+	profiles, err := client.ListProfiles(context.Background(), "alice")
+	require.NoError(t, err)
+	require.Equal(t, []daemonclient.Profile{{ID: "profile-id", Name: "prod", IsActive: true}}, profiles)
+
+	require.NoError(t, client.Down(context.Background()))
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	require.Equal(t, "new", server.addProfile.GetProfileName())
+	require.Equal(t, "alice", server.addProfile.GetUsername())
+	require.Equal(t, "profile-id", server.switchProfile.GetProfileName())
+	require.Equal(t, "alice", server.switchProfile.GetUsername())
+	require.Equal(t, "setup", server.login.GetSetupKey())
+	require.Equal(t, "profile-id", server.login.GetProfileName())
+	require.Equal(t, "alice", server.login.GetUsername())
+	require.Equal(t, "profile-id", server.setConfig.GetProfileName())
+	require.Equal(t, "profile-id", server.up.GetProfileName())
+	require.Equal(t, "alice", server.up.GetUsername())
+	require.Equal(t, "profile-id", server.getConfig.GetProfileName())
+	require.True(t, server.downCalled)
+	require.True(t, server.status.GetWaitForReady())
+}
+
+func TestGRPCClientFallsBackToDisplayNameWhenProfileIDIsEmpty(t *testing.T) {
 	server := &fakeDaemonServer{}
 	address, stop := startFakeDaemonServer(t, server)
 	defer stop()
@@ -66,42 +142,41 @@ func TestGRPCClientWrapper(t *testing.T) {
 		require.NoError(t, client.Close())
 	})
 
-	login, err := client.Login(context.Background(), daemonclient.LoginRequest{
-		SetupKey:      "setup",
-		ManagementURL: "https://api.example.com",
-		Profile:       daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"},
-	})
+	created, err := client.AddProfile(context.Background(), daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"})
 	require.NoError(t, err)
-	require.True(t, login.NeedsSSOLogin)
-	require.Equal(t, "CODE", login.UserCode)
-
-	require.NoError(t, client.Up(context.Background(), daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}))
-
-	status, err := client.Status(context.Background(), daemonclient.StatusOptions{GetFullPeerStatus: true, WaitForReady: true})
-	require.NoError(t, err)
-	require.Equal(t, "connected", status.GetStatus())
-
-	features, err := client.GetFeatures(context.Background())
-	require.NoError(t, err)
-	require.False(t, features.DisableProfiles)
-
-	active, err := client.GetActiveProfile(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}, active)
-
-	profiles, err := client.ListProfiles(context.Background(), "alice")
-	require.NoError(t, err)
-	require.Equal(t, []daemonclient.Profile{{Name: "prod", IsActive: true}}, profiles)
-
-	require.NoError(t, client.Down(context.Background()))
+	require.Equal(t, daemonclient.ProfileRef{ProfileName: "prod", Username: "alice"}, created)
+	require.NoError(t, client.Up(context.Background(), created))
 
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	require.Equal(t, "setup", server.login.GetSetupKey())
 	require.Equal(t, "prod", server.up.GetProfileName())
 	require.Equal(t, "alice", server.up.GetUsername())
-	require.True(t, server.downCalled)
-	require.True(t, server.status.GetWaitForReady())
+}
+
+func TestGRPCClientUsesDefaultHandleForProfileScopedConfigWhenRefEmpty(t *testing.T) {
+	server := &fakeDaemonServer{}
+	address, stop := startFakeDaemonServer(t, server)
+	defer stop()
+
+	factory := daemonclient.NewFactory(daemonclient.Options{
+		Address:     address,
+		DialTimeout: time.Second,
+		RPCTimeout:  time.Second,
+	})
+	client, err := factory.NewClient(context.Background())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	require.NoError(t, client.UpdateProfile(context.Background(), daemonclient.UpdateProfileRequest{}))
+	_, err = client.GetConfig(context.Background(), daemonclient.ProfileRef{})
+	require.NoError(t, err)
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	require.Equal(t, daemonclient.DefaultProfileName, server.setConfig.GetProfileName())
+	require.Equal(t, daemonclient.DefaultProfileName, server.getConfig.GetProfileName())
 }
 
 func startFakeDaemonServer(t *testing.T, daemon *fakeDaemonServer) (string, func()) {
@@ -122,13 +197,18 @@ func startFakeDaemonServer(t *testing.T, daemon *fakeDaemonServer) (string, func
 type fakeDaemonServer struct {
 	proto.UnimplementedDaemonServiceServer
 
-	mu         sync.Mutex
-	login      *proto.LoginRequest
-	setConfig  *proto.SetConfigRequest
-	up         *proto.UpRequest
-	status     *proto.StatusRequest
-	upErr      error
-	downCalled bool
+	mu              sync.Mutex
+	login           *proto.LoginRequest
+	switchProfile   *proto.SwitchProfileRequest
+	addProfile      *proto.AddProfileRequest
+	setConfig       *proto.SetConfigRequest
+	up              *proto.UpRequest
+	getConfig       *proto.GetConfigRequest
+	status          *proto.StatusRequest
+	addProfileID    string
+	switchProfileID string
+	upErr           error
+	downCalled      bool
 }
 
 func (f *fakeDaemonServer) Login(ctx context.Context, req *proto.LoginRequest) (*proto.LoginResponse, error) {
@@ -140,6 +220,20 @@ func (f *fakeDaemonServer) Login(ctx context.Context, req *proto.LoginRequest) (
 
 func (f *fakeDaemonServer) WaitSSOLogin(ctx context.Context, req *proto.WaitSSOLoginRequest) (*proto.WaitSSOLoginResponse, error) {
 	return &proto.WaitSSOLoginResponse{Email: "alice@example.com"}, nil
+}
+
+func (f *fakeDaemonServer) SwitchProfile(ctx context.Context, req *proto.SwitchProfileRequest) (*proto.SwitchProfileResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.switchProfile = req
+	return &proto.SwitchProfileResponse{Id: f.switchProfileID}, nil
+}
+
+func (f *fakeDaemonServer) AddProfile(ctx context.Context, req *proto.AddProfileRequest) (*proto.AddProfileResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.addProfile = req
+	return &proto.AddProfileResponse{Id: f.addProfileID}, nil
 }
 
 func (f *fakeDaemonServer) SetConfig(ctx context.Context, req *proto.SetConfigRequest) (*proto.SetConfigResponse, error) {
@@ -174,6 +268,9 @@ func (f *fakeDaemonServer) Status(ctx context.Context, req *proto.StatusRequest)
 }
 
 func (f *fakeDaemonServer) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*proto.GetConfigResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getConfig = req
 	return &proto.GetConfigResponse{InterfaceName: "wt0"}, nil
 }
 
@@ -182,9 +279,9 @@ func (f *fakeDaemonServer) GetFeatures(ctx context.Context, req *proto.GetFeatur
 }
 
 func (f *fakeDaemonServer) GetActiveProfile(ctx context.Context, req *proto.GetActiveProfileRequest) (*proto.GetActiveProfileResponse, error) {
-	return &proto.GetActiveProfileResponse{ProfileName: "prod", Username: "alice"}, nil
+	return &proto.GetActiveProfileResponse{Id: "profile-id", ProfileName: "prod", Username: "alice"}, nil
 }
 
 func (f *fakeDaemonServer) ListProfiles(ctx context.Context, req *proto.ListProfilesRequest) (*proto.ListProfilesResponse, error) {
-	return &proto.ListProfilesResponse{Profiles: []*proto.Profile{{Name: "prod", IsActive: true}}}, nil
+	return &proto.ListProfilesResponse{Profiles: []*proto.Profile{{Id: "profile-id", Name: "prod", IsActive: true}}}, nil
 }

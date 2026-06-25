@@ -10,7 +10,7 @@ require (
 
 require go.uber.org/goleak v1.3.0
 
-require github.com/netbirdio/netbird v0.72.4
+require github.com/netbirdio/netbird v0.73.2
 
 require (
 	github.com/go-openapi/testify/v2 v2.5.0

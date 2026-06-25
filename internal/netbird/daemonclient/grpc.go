@@ -177,8 +177,8 @@ func (c *grpcClient) Login(ctx context.Context, request LoginRequest) (LoginResp
 	if request.PreSharedKey != "" {
 		req.OptionalPreSharedKey = new(request.PreSharedKey)
 	}
-	if request.Profile.ProfileName != "" {
-		req.ProfileName = new(request.Profile.ProfileName)
+	if handle := request.Profile.Handle(); handle != "" {
+		req.ProfileName = new(handle)
 	}
 	if request.Profile.Username != "" {
 		req.Username = new(request.Profile.Username)
@@ -210,25 +210,45 @@ func (c *grpcClient) WaitSSOLogin(ctx context.Context, request WaitSSOLoginReque
 	return WaitSSOLoginResponse{Email: resp.GetEmail()}, nil
 }
 
-func (c *grpcClient) SwitchProfile(ctx context.Context, profile ProfileRef) error {
+func (c *grpcClient) SwitchProfile(ctx context.Context, profile ProfileRef) (ProfileRef, error) {
 	if profile.Empty() {
-		return nil
+		return profile, nil
 	}
 	ctx, cancel := c.callContext(ctx)
 	defer cancel()
 
 	req := &proto.SwitchProfileRequest{}
-	if profile.ProfileName != "" {
-		req.ProfileName = new(profile.ProfileName)
+	if handle := profile.Handle(); handle != "" {
+		req.ProfileName = new(handle)
 	}
 	if profile.Username != "" {
 		req.Username = new(profile.Username)
 	}
-	_, err := c.client.SwitchProfile(ctx, req)
+	resp, err := c.client.SwitchProfile(ctx, req)
 	if err != nil {
-		return daemonError("switch profile", err)
+		return ProfileRef{}, daemonError("switch profile", err)
 	}
-	return nil
+	if id := resp.GetId(); id != "" {
+		profile.ID = id
+	}
+	return profile, nil
+}
+
+func (c *grpcClient) AddProfile(ctx context.Context, profile ProfileRef) (ProfileRef, error) {
+	ctx, cancel := c.callContext(ctx)
+	defer cancel()
+
+	resp, err := c.client.AddProfile(ctx, &proto.AddProfileRequest{
+		Username:    profile.Username,
+		ProfileName: profile.ProfileName,
+	})
+	if err != nil {
+		return ProfileRef{}, daemonError("add profile", err)
+	}
+	if id := resp.GetId(); id != "" {
+		profile.ID = id
+	}
+	return profile, nil
 }
 
 func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileRequest) error {
@@ -237,7 +257,7 @@ func (c *grpcClient) UpdateProfile(ctx context.Context, request UpdateProfileReq
 
 	req := &proto.SetConfigRequest{
 		Username:      request.Profile.Username,
-		ProfileName:   request.Profile.ProfileName,
+		ProfileName:   request.Profile.ConfigHandle(),
 		ManagementUrl: request.ManagementURL,
 		AdminURL:      request.AdminURL,
 	}
@@ -259,8 +279,8 @@ func (c *grpcClient) Up(ctx context.Context, profile ProfileRef) error {
 	defer cancel()
 
 	req := &proto.UpRequest{}
-	if profile.ProfileName != "" {
-		req.ProfileName = new(profile.ProfileName)
+	if handle := profile.Handle(); handle != "" {
+		req.ProfileName = new(handle)
 	}
 	if profile.Username != "" {
 		req.Username = new(profile.Username)
@@ -306,7 +326,7 @@ func (c *grpcClient) GetConfig(ctx context.Context, profile ProfileRef) (*proto.
 	defer cancel()
 
 	resp, err := c.client.GetConfig(ctx, &proto.GetConfigRequest{
-		ProfileName: profile.ProfileName,
+		ProfileName: profile.ConfigHandle(),
 		Username:    profile.Username,
 	})
 	if err != nil {
@@ -338,7 +358,7 @@ func (c *grpcClient) GetActiveProfile(ctx context.Context) (ProfileRef, error) {
 	if err != nil {
 		return ProfileRef{}, daemonError("get active profile", err)
 	}
-	return ProfileRef{ProfileName: resp.GetProfileName(), Username: resp.GetUsername()}, nil
+	return ProfileRef{ID: resp.GetId(), ProfileName: resp.GetProfileName(), Username: resp.GetUsername()}, nil
 }
 
 func (c *grpcClient) ListProfiles(ctx context.Context, username string) ([]Profile, error) {
@@ -351,7 +371,7 @@ func (c *grpcClient) ListProfiles(ctx context.Context, username string) ([]Profi
 	}
 	profiles := make([]Profile, 0, len(resp.GetProfiles()))
 	for _, profile := range resp.GetProfiles() {
-		profiles = append(profiles, Profile{Name: profile.GetName(), IsActive: profile.GetIsActive()})
+		profiles = append(profiles, Profile{ID: profile.GetId(), Name: profile.GetName(), IsActive: profile.GetIsActive()})
 	}
 	return profiles, nil
 }

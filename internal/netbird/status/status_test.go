@@ -19,6 +19,8 @@ func TestMapStatusStrings(t *testing.T) {
 		{name: "connecting", raw: "Connecting to management", want: nbstatus.Connecting},
 		{name: "not connected", raw: "Not Connected", want: nbstatus.Disconnected},
 		{name: "login required", raw: "login_required", want: nbstatus.Disconnected},
+		{name: "canonical needs login", raw: "NeedsLogin", want: nbstatus.Disconnected},
+		{name: "canonical login failed", raw: "LoginFailed", want: nbstatus.Failed},
 		{name: "failure", raw: "authentication failed", want: nbstatus.Failed},
 		{name: "setup required is not up", raw: "setup key required", want: nbstatus.Unknown},
 	}

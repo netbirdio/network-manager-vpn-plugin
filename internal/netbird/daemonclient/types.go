@@ -40,6 +40,10 @@ const (
 
 	// EnvDaemonService is the environment variable overriding DefaultDaemonService.
 	EnvDaemonService = "NM_NETBIRD_DAEMON_SERVICE"
+
+	// DefaultProfileName is the daemon's singleton/default profile handle. NetBird
+	// v0.73 requires an explicit handle for profile-scoped config RPCs.
+	DefaultProfileName = "default"
 )
 
 // Factory creates short-lived clients connected to the local NetBird daemon.
@@ -53,7 +57,8 @@ type Factory interface {
 type Client interface {
 	Login(ctx context.Context, request LoginRequest) (LoginResponse, error)
 	WaitSSOLogin(ctx context.Context, request WaitSSOLoginRequest) (WaitSSOLoginResponse, error)
-	SwitchProfile(ctx context.Context, profile ProfileRef) error
+	SwitchProfile(ctx context.Context, profile ProfileRef) (ProfileRef, error)
+	AddProfile(ctx context.Context, profile ProfileRef) (ProfileRef, error)
 	UpdateProfile(ctx context.Context, request UpdateProfileRequest) error
 	Up(ctx context.Context, profile ProfileRef) error
 	Down(ctx context.Context) error
@@ -66,23 +71,52 @@ type Client interface {
 }
 
 // ProfileRef identifies a NetBird daemon profile. Empty fields mean the daemon
-// default/singleton profile should be used.
+// default/singleton profile should be used. ProfileName is the human-readable
+// display name (for NetworkManager connections, nm-<UUID>); ID is NetBird's
+// generated profile ID used as the preferred daemon RPC handle when present.
 type ProfileRef struct {
+	ID          string
 	ProfileName string
 	Username    string
 }
 
 func (r ProfileRef) Empty() bool {
-	return strings.TrimSpace(r.ProfileName) == "" && strings.TrimSpace(r.Username) == ""
+	return strings.TrimSpace(r.ID) == "" && strings.TrimSpace(r.ProfileName) == "" && strings.TrimSpace(r.Username) == ""
+}
+
+// Handle returns the daemon profile handle to put in proto ProfileName fields.
+// NetBird v0.73 accepts an exact ID, ID prefix, or unique display name; use the
+// exact ID after resolution/creation to avoid ambiguous display-name handles.
+func (r ProfileRef) Handle() string {
+	if id := strings.TrimSpace(r.ID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(r.ProfileName)
+}
+
+// ConfigHandle returns a handle suitable for profile-scoped config RPCs.
+// Unlike Login/Up/SwitchProfile, NetBird v0.73 SetConfig/GetConfig do not treat
+// an empty handle as "use active/default"; ask explicitly for the default
+// profile when the plugin has no profile ref (for example when profiles are
+// disabled).
+func (r ProfileRef) ConfigHandle() string {
+	if handle := r.Handle(); handle != "" {
+		return handle
+	}
+	return DefaultProfileName
 }
 
 func (r ProfileRef) Equal(other ProfileRef) bool {
-	return strings.TrimSpace(r.ProfileName) == strings.TrimSpace(other.ProfileName) &&
+	return strings.TrimSpace(r.ID) == strings.TrimSpace(other.ID) &&
+		strings.TrimSpace(r.ProfileName) == strings.TrimSpace(other.ProfileName) &&
 		strings.TrimSpace(r.Username) == strings.TrimSpace(other.Username)
 }
 
 // MatchesDesired reports whether r satisfies every non-empty field in desired.
 func (r ProfileRef) MatchesDesired(desired ProfileRef) bool {
+	if strings.TrimSpace(desired.ID) != "" && strings.TrimSpace(r.ID) != strings.TrimSpace(desired.ID) {
+		return false
+	}
 	if strings.TrimSpace(desired.ProfileName) != "" && strings.TrimSpace(r.ProfileName) != strings.TrimSpace(desired.ProfileName) {
 		return false
 	}
@@ -94,6 +128,9 @@ func (r ProfileRef) MatchesDesired(desired ProfileRef) bool {
 
 func (r ProfileRef) String() string {
 	profileName := strings.TrimSpace(r.ProfileName)
+	if profileName == "" {
+		profileName = strings.TrimSpace(r.ID)
+	}
 	username := strings.TrimSpace(r.Username)
 	switch {
 	case profileName == "" && username == "":
@@ -109,6 +146,7 @@ func (r ProfileRef) String() string {
 
 // Profile is a daemon profile returned by ListProfiles.
 type Profile struct {
+	ID       string
 	Name     string
 	IsActive bool
 }

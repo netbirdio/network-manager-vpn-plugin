@@ -427,6 +427,110 @@ func TestConnectUsesSetupKeyLogin(t *testing.T) {
 	require.Equal(t, "alice", fake.upRequests[0].Username)
 }
 
+func TestConnectCreatesMissingProfileAndUsesReturnedID(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+
+	fake.mu.Lock()
+	fake.addProfileID = "generated-profile-id"
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"id":   dbus.MakeVariant("netbird-generated"),
+			"uuid": dbus.MakeVariant("11111111-1111-1111-1111-111111111111"),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key", "username": "alice"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	displayRef := daemonclient.ProfileRef{ProfileName: "nm-11111111-1111-1111-1111-111111111111", Username: "alice"}
+	idRef := daemonclient.ProfileRef{ID: "generated-profile-id", ProfileName: displayRef.ProfileName, Username: "alice"}
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Equal(t, []string{"add-profile", "switch-profile", "login", "update-profile", "up", "get-config"}, fake.operations)
+	require.Equal(t, []daemonclient.ProfileRef{displayRef}, fake.addProfileRequests)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.switchProfileRequests)
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, idRef, fake.loginRequests[0].Profile)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.loginActiveProfiles)
+	require.Equal(t, []daemonclient.UpdateProfileRequest{{
+		Profile:       idRef,
+		ManagementURL: "https://api.netbird.io:443",
+		AdminURL:      "https://app.netbird.io:443",
+	}}, fake.updateProfileRequests)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.upRequests)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.getConfigRequests)
+}
+
+func TestConnectReusesExistingProfileIDWithoutCreatingDuplicate(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+
+	fake.mu.Lock()
+	fake.profiles = []daemonclient.Profile{{ID: "existing-profile-id", Name: "nm-11111111-1111-1111-1111-111111111111"}}
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"id":   dbus.MakeVariant("netbird-generated"),
+			"uuid": dbus.MakeVariant("11111111-1111-1111-1111-111111111111"),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key", "username": "alice"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStarted)
+
+	idRef := daemonclient.ProfileRef{ID: "existing-profile-id", ProfileName: "nm-11111111-1111-1111-1111-111111111111", Username: "alice"}
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.addProfileRequests)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.switchProfileRequests)
+	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, idRef, fake.loginRequests[0].Profile)
+	require.Equal(t, []daemonclient.ProfileRef{idRef}, fake.upRequests)
+}
+
+func TestConnectFailsSafelyWhenProfileDisplayNameIsDuplicate(t *testing.T) {
+	obj, fake := newTestingBusObject(t)
+
+	fake.mu.Lock()
+	fake.profiles = []daemonclient.Profile{
+		{ID: "profile-id-1", Name: "nm-11111111-1111-1111-1111-111111111111"},
+		{ID: "profile-id-2", Name: "nm-11111111-1111-1111-1111-111111111111"},
+	}
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"uuid": dbus.MakeVariant("11111111-1111-1111-1111-111111111111"),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key", "username": "alice"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.addProfileRequests)
+	require.Empty(t, fake.switchProfileRequests)
+	require.Empty(t, fake.loginRequests)
+	require.Empty(t, fake.upRequests)
+}
+
 func TestConnectIgnoresVPNDataProfileName(t *testing.T) {
 	obj, fake := newTestingBusObject(t)
 
@@ -577,6 +681,8 @@ func TestConnectFallsBackToDefaultWhenDaemonProfilesAreDisabled(t *testing.T) {
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
+	require.Empty(t, fake.addProfileRequests)
+	require.Empty(t, fake.switchProfileRequests)
 	require.Len(t, fake.loginRequests, 1)
 	require.True(t, fake.loginRequests[0].Profile.Empty())
 	require.NotEmpty(t, fake.upRequests)
@@ -605,6 +711,49 @@ func TestConnectDoesNotLoginWhenDifferentProfileIsAlreadyConnected(t *testing.T)
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
+	require.Empty(t, fake.addProfileRequests)
+	require.Empty(t, fake.switchProfileRequests)
+	require.Empty(t, fake.loginRequests)
+	require.Empty(t, fake.upRequests)
+}
+
+func TestConnectDoesNotReuseActiveProfileWithDifferentUsernameBeforeProcessUserFallback(t *testing.T) {
+	current, err := osuser.Current()
+	if err != nil || strings.TrimSpace(current.Username) == "" {
+		t.Skip("current process username is unavailable")
+	}
+	activeUsername := "different-netbird-user"
+	if activeUsername == strings.TrimSpace(current.Username) {
+		activeUsername = "another-netbird-user"
+	}
+
+	obj, fake := newTestingBusObject(t)
+
+	fake.mu.Lock()
+	fake.activeProfile = daemonclient.ProfileRef{
+		ID:          "active-id",
+		ProfileName: "nm-33333333-3333-3333-3333-333333333333",
+		Username:    activeUsername,
+	}
+	fake.mu.Unlock()
+
+	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"uuid": dbus.MakeVariant("33333333-3333-3333-3333-333333333333"),
+		},
+		"vpn": {
+			"data":    dbus.MakeVariant(map[string]string{"auth": "setup-key"}),
+			"secrets": dbus.MakeVariant(map[string]string{"setup-key": "secret"}),
+		},
+	}
+
+	require.NoError(t, obj.Call(nmplugin.Interface+".Connect", 0, settings).Store())
+	waitForState(t, obj, nmplugin.ServiceStateStopped)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	require.Empty(t, fake.addProfileRequests)
+	require.Empty(t, fake.switchProfileRequests)
 	require.Empty(t, fake.loginRequests)
 	require.Empty(t, fake.upRequests)
 }
@@ -661,6 +810,7 @@ func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
 	t.Cleanup(releaseWait)
 
 	fake.mu.Lock()
+	fake.addProfileID = "sso-profile-id"
 	fake.loginResponse = daemonclient.LoginResponse{
 		NeedsSSOLogin:           true,
 		UserCode:                "ABCD-EFGH",
@@ -672,8 +822,11 @@ func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
 	fake.mu.Unlock()
 
 	settings := nmplugin.ConnectionSettings{
+		"connection": {
+			"uuid": dbus.MakeVariant("22222222-2222-2222-2222-222222222222"),
+		},
 		"vpn": {
-			"data": dbus.MakeVariant(map[string]string{"auth": "sso"}),
+			"data": dbus.MakeVariant(map[string]string{"auth": "sso", "username": "alice"}),
 		},
 	}
 
@@ -709,6 +862,7 @@ func TestConnectInteractiveWithSSOAuthEmitsPromptHints(t *testing.T) {
 		t.Fatal("SSO wait did not start")
 	}
 	require.Len(t, fake.loginRequests, 1)
+	require.Equal(t, daemonclient.ProfileRef{ID: "sso-profile-id", ProfileName: "nm-22222222-2222-2222-2222-222222222222", Username: "alice"}, fake.loginRequests[0].Profile)
 	require.Equal(t, "https://api.netbird.io:443", fake.loginRequests[0].ManagementURL)
 	require.Equal(t, "https://app.netbird.io:443", fake.loginRequests[0].AdminURL)
 	releaseWait()
@@ -1340,17 +1494,21 @@ type fakeDaemonClient struct {
 	features             daemonclient.Features
 	activeProfile        daemonclient.ProfileRef
 	profiles             []daemonclient.Profile
+	addProfileID         string
 
 	waitSSOStarted   chan struct{}
 	waitSSORelease   chan struct{}
 	getConfigStarted chan struct{}
 	getConfigRelease chan struct{}
 
+	operations            []string
 	loginRequests         []daemonclient.LoginRequest
 	loginActiveProfiles   []daemonclient.ProfileRef
+	addProfileRequests    []daemonclient.ProfileRef
 	switchProfileRequests []daemonclient.ProfileRef
 	updateProfileRequests []daemonclient.UpdateProfileRequest
 	upRequests            []daemonclient.ProfileRef
+	getConfigRequests     []daemonclient.ProfileRef
 	upErrs                []error
 	downCalls             int
 	closed                bool
@@ -1366,26 +1524,42 @@ func newFakeDaemonClient() *fakeDaemonClient {
 func (f *fakeDaemonClient) Login(ctx context.Context, request daemonclient.LoginRequest) (daemonclient.LoginResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.operations = append(f.operations, "login")
 	f.loginRequests = append(f.loginRequests, request)
 	f.loginActiveProfiles = append(f.loginActiveProfiles, f.activeProfile)
 	return f.loginResponse, nil
 }
 
-func (f *fakeDaemonClient) SwitchProfile(ctx context.Context, ref daemonclient.ProfileRef) error {
+func (f *fakeDaemonClient) AddProfile(ctx context.Context, ref daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.operations = append(f.operations, "add-profile")
+	f.addProfileRequests = append(f.addProfileRequests, ref)
+	created := ref
+	if f.addProfileID != "" {
+		created.ID = f.addProfileID
+	}
+	f.profiles = append(f.profiles, daemonclient.Profile{ID: created.ID, Name: created.ProfileName})
+	return created, nil
+}
+
+func (f *fakeDaemonClient) SwitchProfile(ctx context.Context, ref daemonclient.ProfileRef) (daemonclient.ProfileRef, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.operations = append(f.operations, "switch-profile")
 	f.switchProfileRequests = append(f.switchProfileRequests, ref)
 	f.activeProfile = ref
 	if f.statusAfterSwitch != nil {
 		f.status = f.statusAfterSwitch
 		f.statusAfterSwitch = nil
 	}
-	return nil
+	return ref, nil
 }
 
 func (f *fakeDaemonClient) UpdateProfile(ctx context.Context, request daemonclient.UpdateProfileRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.operations = append(f.operations, "update-profile")
 	f.updateProfileRequests = append(f.updateProfileRequests, request)
 	return nil
 }
@@ -1413,6 +1587,7 @@ func (f *fakeDaemonClient) WaitSSOLogin(ctx context.Context, request daemonclien
 func (f *fakeDaemonClient) Up(ctx context.Context, ref daemonclient.ProfileRef) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.operations = append(f.operations, "up")
 	f.upRequests = append(f.upRequests, ref)
 	if len(f.upErrs) == 0 {
 		return nil
@@ -1461,6 +1636,8 @@ func (f *fakeDaemonClient) Status(ctx context.Context, options daemonclient.Stat
 
 func (f *fakeDaemonClient) GetConfig(ctx context.Context, ref daemonclient.ProfileRef) (*proto.GetConfigResponse, error) {
 	f.mu.Lock()
+	f.operations = append(f.operations, "get-config")
+	f.getConfigRequests = append(f.getConfigRequests, ref)
 	started := f.getConfigStarted
 	f.getConfigStarted = nil
 	release := f.getConfigRelease

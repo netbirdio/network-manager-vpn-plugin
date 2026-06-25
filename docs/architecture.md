@@ -49,13 +49,15 @@ The plugin dials the gRPC socket (`--daemon-address`, default `unix:///var/run/n
 
 The plugin maps the NetworkManager connection to a NetBird daemon profile:
 
-- **Profile name:** `nm-<connection UUID>` (falls back to a sanitised connection ID if NetworkManager doesn't provide a UUID).
+- **Display name:** `nm-<connection UUID>` (falls back to a sanitised connection ID if NetworkManager doesn't provide a UUID).
 - **Username:** Inferred from:
   1. The `username` key in `vpn.data`.
   2. NetworkManager connection permissions (when the profile has exactly one `user:` permission).
   3. The service process user (usually `root` for system-wide connections).
 
-If a different NetBird profile is already connected or connecting on the daemon, the plugin fails safely — NetBird supports one active engine at a time, and the plugin will not switch away from another session.
+Before authentication, the plugin lists daemon profiles for that username, reuses the exact `nm-<UUID>` display name when it already exists, or creates it with `AddProfile` when it is missing. NetBird 0.73 and newer assign a generated profile ID; the plugin keeps `nm-<UUID>` as the stable display name but uses the generated ID internally as the daemon RPC handle to avoid ambiguous display-name resolution. Older daemons that return no ID continue to use the display name as the handle.
+
+If multiple daemon profiles have the same `nm-<UUID>` display name, the plugin fails safely rather than guessing. If a different NetBird profile is already connected or connecting on the daemon, the plugin also fails safely — NetBird supports one active engine at a time, and the plugin will not switch away from another session.
 
 ### 4. Authenticate
 
@@ -70,7 +72,7 @@ Missing auth and legacy `login` / `reuse` values are normalized to `sso`; they a
 
 ### 5. Update daemon profile
 
-The plugin updates the daemon profile through the NetBird daemon `SetConfig` RPC (wrapped internally as `UpdateProfile`) when:
+The plugin updates the resolved daemon profile through the NetBird daemon `SetConfig` RPC (wrapped internally as `UpdateProfile`) when:
 
 - `auth` is `setup-key` or `sso`; or
 - any of management URL, admin URL, interface name, or PSK is explicitly present in the NetworkManager settings.
@@ -79,7 +81,7 @@ The plugin does not first compare these values with the daemon's current configu
 
 ### 6. `Up`
 
-The plugin calls `Up` on the daemon for the resolved profile. If the daemon responds with an authentication error, activation fails with `LOGIN_FAILED`.
+The plugin calls `Up` on the daemon for the resolved profile, using the generated profile ID as the handle when the daemon supplied one. If the daemon responds with an authentication error, activation fails with `LOGIN_FAILED`.
 
 ### 7. Wait for ready
 
@@ -106,11 +108,11 @@ When NetworkManager calls `Disconnect`, the plugin:
 
 The NetBird daemon supports **one active WireGuard engine** at a time. This means only one NetworkManager-backed connection can be active. The plugin enforces this by reserving the activation slot and holding a reference to the active daemon client.
 
-Each NetworkManager connection maps to a distinct NetBird profile name (`nm-<UUID>`). Switching between connections works because:
+Each NetworkManager connection maps to a distinct NetBird profile display name (`nm-<UUID>`). During activation the plugin ensures that display name exists for the selected username, then prefers the daemon-generated profile ID as the handle for `SwitchProfile`, `Login`, `SetConfig`, `Up`, and `GetConfig`. Switching between connections works because:
 
 1. `Disconnect` calls daemon `Down`, stopping the engine.
-2. A new `Connect` starts a new activation with a different profile name.
-3. The daemon `Up` call binds the engine to the new profile.
+2. A new `Connect` starts a new activation with a different `nm-<UUID>` profile display name.
+3. The daemon `Up` call binds the engine to the resolved profile ID/display-name handle.
 
 The profile owner username ensures that when multiple system users have NetworkManager connections, they each get the correct NetBird profile scope. Per-user connections (user-scoped `nmcli`) forward the connection's permission username; system-wide connections use the service process user.
 

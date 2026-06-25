@@ -45,6 +45,14 @@ Keys stored in NetworkManager `vpn.data`. The plugin reads these values during a
 | `hostname` | `host-name` | Hostname sent during daemon login. Defaults to the local OS hostname. |
 | `interface-name` | `interfaceName`, `netbird-interface-name` | Desired NetBird WireGuard interface name. The daemon defaults to `wt0` (or the next available `wtN`). |
 
+## NetBird profile mapping
+
+For NetworkManager-backed connections, the plugin derives a stable NetBird profile display name from NetworkManager metadata: `nm-<connection UUID>`, falling back to a sanitised connection ID when the UUID is absent. The plugin ignores any user-supplied `profile-name` value in `vpn.data` for this mapping.
+
+During activation, the plugin resolves that display name for the selected username with `ListProfiles`. If it is missing, the plugin calls `AddProfile` before `SwitchProfile` or `Login`. NetBird 0.73+ returns a generated profile ID; the plugin uses that ID internally as the daemon handle for later RPCs while keeping `nm-<UUID>` as the display name. When an older daemon returns an empty ID, the plugin falls back to the display-name handle. Duplicate matching display names are treated as an activation error.
+
+The generated profile ID is not persisted in NetworkManager settings.
+
 ## VPN secrets keys
 
 Keys stored in NetworkManager `vpn.secrets`. NetworkManager protects secrets according to its configured permissions model.
@@ -161,16 +169,17 @@ The plugin communicates with the local NetBird daemon over gRPC at the configure
 
 | RPC | Phase | Description |
 | --- | --- | --- |
-| `Login` | Authentication | Non-interactive daemon login with setup-key, or device-code initiation for SSO. |
+| `Login` | Authentication | Non-interactive daemon login with setup-key, or device-code initiation for SSO, using the resolved profile ID handle when available. |
 | `WaitSSOLogin` | Authentication | Polls the daemon for completion of an interactive SSO login. |
-| `GetActiveProfile` | Activation | Reads the currently active daemon profile to detect sessions owned by other connections. |
-| `ListProfiles` | Activation | Lists daemon profiles to resolve the `nm-<UUID>` profile name. |
-| `SetConfig` | Activation | Updates daemon profile settings (management URL, admin URL, interface name, PSK) from NetworkManager settings. The service wraps this daemon RPC as `UpdateProfile` internally. |
+| `GetActiveProfile` | Activation | Reads the currently active daemon profile to detect sessions owned by other connections and capture profile IDs. |
+| `ListProfiles` | Activation | Lists daemon profiles to resolve the `nm-<UUID>` display name and detect duplicates. |
+| `AddProfile` | Activation | Creates the missing `nm-<UUID>` daemon profile before switching or logging in. The returned generated ID is used as the internal handle when present. |
+| `SetConfig` | Activation | Updates daemon profile settings (management URL, admin URL, interface name, PSK) from NetworkManager settings using the resolved profile handle. The service wraps this daemon RPC as `UpdateProfile` internally. |
 | `GetFeatures` | Activation | Reads daemon feature flags to decide whether profile updates are supported. |
-| `Up` | Activation | Starts the daemon engine for the resolved NetBird profile. |
+| `Up` | Activation | Starts the daemon engine for the resolved NetBird profile ID/display-name handle. |
 | `Down` | Deactivation | Stops the daemon engine. |
 | `Status` | Monitoring | Polls daemon connection state and peer status at ~5 second intervals. |
-| `GetConfig` | Activation | Reads daemon config to populate the NetworkManager `Config` signal when `vpn.data` omits certain fields. |
+| `GetConfig` | Activation | Reads daemon config for the resolved profile handle to populate the NetworkManager `Config` signal when `vpn.data` omits certain fields. |
 
 ## Installed files
 
@@ -188,6 +197,8 @@ Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball in
 | `/etc/NetworkManager/conf.d/90-netbird-unmanaged.conf` | Marks `wt*` interfaces as unmanaged so NetworkManager does not touch them. |
 | `/usr/share/selinux/packages/nm_netbird.pp` | SELinux policy module for RPM packages. The RPM post-install script installs it with `semodule` when available. |
 | `/usr/share/doc/network-manager-netbird/LICENSE` | License text for `.deb`/`.rpm` packages. Tarball releases include `LICENSE` at the archive root. |
+
+On Fedora, the RPM SELinux policy labels `/run/netbird.sock` as `nm_netbird_runtime_t` and allows the plugin domain to connect to NetBird daemon domains that opt into `nm_netbird_daemon_domain`. It also includes a compatibility allowance for the upstream NetBird RPM when `netbird.service` runs as `unconfined_service_t`; a dedicated NetBird daemon SELinux domain remains the preferred long-term integration.
 
 ## Build targets
 

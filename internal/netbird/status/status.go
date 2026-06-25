@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/netbirdio/netbird/client/proto"
 )
@@ -203,10 +204,24 @@ func isFailureEvent(event *proto.SystemEvent) bool {
 }
 
 func normalize(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = splitCamelCase(strings.TrimSpace(value))
+	value = strings.ToLower(value)
 	replacer := strings.NewReplacer("_", " ", "-", " ", ".", " ", ":", " ", ";", " ", ",", " ")
 	value = replacer.Replace(value)
 	return strings.Join(strings.Fields(value), " ")
+}
+
+func splitCamelCase(value string) string {
+	var b strings.Builder
+	var prev rune
+	for i, r := range value {
+		if i > 0 && (unicode.IsLower(prev) || unicode.IsDigit(prev)) && unicode.IsUpper(r) {
+			b.WriteRune(' ')
+		}
+		b.WriteRune(r)
+		prev = r
+	}
+	return b.String()
 }
 
 func containsAny(value string, needles ...string) bool {

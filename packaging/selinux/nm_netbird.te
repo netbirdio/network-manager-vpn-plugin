@@ -1,13 +1,15 @@
-policy_module(nm_netbird, 1.0.0)
+policy_module(nm_netbird, 1.0.1)
 
 require {
 	type NetworkManager_t;
 	type system_dbusd_t;
 	type cgroup_t;
+	type unconfined_service_t;
+	type var_run_t;
 	class dbus { acquire_svc send_msg };
 	class dir { getattr search };
 	class file { execute getattr map open read };
-	class sock_file { getattr open read write };
+	class sock_file { create getattr open read setattr unlink write };
 	class unix_stream_socket { connectto create getattr getopt ioctl read setopt shutdown write };
 }
 
@@ -45,10 +47,20 @@ allow nm_netbird_t NetworkManager_t:dbus send_msg;
 # Keep this limited to the labeled NetBird daemon socket.
 allow NetworkManager_t nm_netbird_runtime_t:sock_file { getattr open read write };
 
-# The packaged NetBird daemon does not currently provide a distro-neutral
-# SELinux domain in this repository. Do not grant blanket connectto permissions
-# to init_t or unconfined_service_t because SELinux cannot scope connectto to
-# only the /run/netbird.sock path. The NetBird daemon package or site-local
-# policy can opt the daemon's actual SELinux type into nm_netbird_daemon_domain.
+# Prefer a dedicated NetBird daemon SELinux domain. A distro or site-local
+# policy can opt the daemon's actual type into nm_netbird_daemon_domain.
 allow nm_netbird_t nm_netbird_daemon_domain:unix_stream_socket connectto;
 allow NetworkManager_t nm_netbird_daemon_domain:unix_stream_socket connectto;
+
+# Fedora's upstream NetBird RPM can run netbird.service as unconfined_service_t.
+# SELinux checks unix_stream_socket connectto against the server process domain,
+# not the /run/netbird.sock path, so this explicit compatibility exception is
+# needed until NetBird ships a dedicated daemon domain that can opt into
+# nm_netbird_daemon_domain.
+allow nm_netbird_t unconfined_service_t:unix_stream_socket connectto;
+allow NetworkManager_t unconfined_service_t:unix_stream_socket connectto;
+
+# Keep daemon-created sockets labeled after netbird.service restarts, not only
+# after RPM postinstall restorecon of an already-existing socket.
+type_transition unconfined_service_t var_run_t:sock_file nm_netbird_runtime_t "netbird.sock";
+allow unconfined_service_t nm_netbird_runtime_t:sock_file { create getattr open read setattr unlink write };
