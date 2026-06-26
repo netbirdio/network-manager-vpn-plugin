@@ -211,7 +211,8 @@ All targets are run via `task <name>`. See `Taskfile.yml` for full definitions.
 | `build:go` | Build `nm-netbird-service` and `nm-netbird-auth-dialog`. |
 | `build:properties` | Build the libnm loader (`libnm-vpn-plugin-netbird.so`) and GTK 3 editor. |
 | `build:properties:gtk4` | Build the GTK 4 editor. |
-| `selinux:build` | Build the `nm_netbird` SELinux policy module for RPM packaging/manual install. |
+| `selinux:build` | Build the `nm_netbird` SELinux policy module with local SELinux policy headers. |
+| `selinux:build:fedora` | Build and validate the `nm_netbird` SELinux policy module in a Fedora container for RPM packaging. |
 | `selinux:install` | Install the built SELinux policy module with `semodule`. |
 | `selinux:clean` | Remove generated SELinux policy build artifacts. |
 | `test` | Run Go unit tests + editor model tests. |

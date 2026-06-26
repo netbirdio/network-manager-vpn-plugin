@@ -8,8 +8,8 @@ git:
     - snapshot
 
 snapshot:
-  # Keep nFPM package versions Debian/RPM-compatible.
-  version_template: '{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}'
+  # Keep nFPM, RPM spec, and Debian package versions compatible.
+  version_template: '{{ incpatch .Version }}~snapshot.{{ .ShortCommit }}'
 
 builds:
   - id: nm-netbird-service
@@ -115,6 +115,25 @@ archives:
         dst: packaging/dbus-1/system.d/nm-netbird-service.conf
       - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
         dst: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
+
+srpm:
+  enabled: true
+  package_name: network-manager-netbird
+  spec_file: packaging/rpm/network-manager-netbird.spec.tmpl
+  import_path: github.com/netbirdio/network-manager-plugin
+  summary: NetworkManager VPN plugin for NetBird
+  license: BSD-3-Clause
+  license_file_name: LICENSE
+  url: https://github.com/netbirdio/network-manager-vpn-plugin
+  description: |
+    NetworkManager VPN plugin that controls the local NetBird daemon over gRPC.
+  packager: NetBird <hello@netbird.io>
+  vendor: NetBird
+  docs:
+    - README.md
+    - docs/reference.md
+    - docs/architecture.md
+  group: Applications/Internet
 
 nfpms:
   - id: linux-packages

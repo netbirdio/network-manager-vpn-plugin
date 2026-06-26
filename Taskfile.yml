@@ -130,9 +130,14 @@ tasks:
     deps: [build:go, build:properties]
 
   selinux:build:
-    desc: Build the SELinux policy module
+    desc: Build the SELinux policy module with local SELinux policy headers
     cmds:
       - make -C {{.SELINUX_POLICY_DIR}}
+
+  selinux:build:fedora:
+    desc: Build and validate the SELinux policy module against Fedora policy
+    cmds:
+      - ./scripts/build-fedora-selinux-policy.sh
 
   selinux:install:
     desc: Install the SELinux policy module with semodule
