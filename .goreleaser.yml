@@ -116,12 +116,19 @@ archives:
       - src: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
         dst: packaging/NetworkManager/conf.d/90-netbird-unmanaged.conf
 
+source:
+  enabled: true
+  name_template: 'network-manager-netbird-{{ .Version }}'
+  prefix_template: 'network-manager-netbird-{{ .Version }}/'
+
 srpm:
   enabled: true
   package_name: network-manager-netbird
   spec_file: packaging/rpm/network-manager-netbird.spec.tmpl
   import_path: github.com/netbirdio/network-manager-plugin
-  summary: NetworkManager VPN plugin for NetBird
+  nfpmrpm:
+    summary: NetworkManager VPN plugin for NetBird
+    group: Applications/Internet
   license: BSD-3-Clause
   license_file_name: LICENSE
   url: https://github.com/netbirdio/network-manager-vpn-plugin
@@ -133,7 +140,6 @@ srpm:
     - README.md
     - docs/reference.md
     - docs/architecture.md
-  group: Applications/Internet
 
 nfpms:
   - id: linux-packages
