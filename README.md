@@ -7,8 +7,9 @@ NetworkManager is only a control/status frontend in this integration. NetBird re
 ## Requirements
 
 - Linux with NetworkManager
-- NetBird daemon/runtime installed (see the [official NetBird Linux installation guide](https://docs.netbird.io/get-started/install/linux))
+- NetBird daemon/runtime installed or installable from the NetBird package repository (see the [official NetBird Linux installation guide](https://docs.netbird.io/get-started/install/linux))
 - NetBird daemon gRPC socket available (default: `unix:///var/run/netbird.sock`)
+
 When building the desktop properties editor from source:
 
 - `cc`, `pkg-config`, libnm, GTK 3, and libnma development headers
@@ -23,9 +24,50 @@ When building the desktop properties editor from source:
 
 ## Quick install
 
-### One-line quickstart
+Tagged releases are published to the NetBird APT/YUM repositories as `network-manager-netbird` for `amd64`/`x86_64`. The package depends on the NetBird daemon/runtime package (`netbird`), so package managers can install both from the same repository. You still need to authenticate/connect NetBird after installation.
 
-For Ubuntu/Debian/Fedora/RHEL on `amd64`/`x86_64`, the quickstart script installs NetworkManager prerequisites, enables NetworkManager, downloads the latest package, and installs it. The NetBird daemon/runtime requirement above still applies:
+### Ubuntu/Debian (APT)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg network-manager
+
+curl -fsSL https://pkgs.netbird.io/debian/public.key \
+  | sudo gpg --dearmor --yes -o /usr/share/keyrings/netbird-archive-keyring.gpg
+sudo chmod 0644 /usr/share/keyrings/netbird-archive-keyring.gpg
+
+echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' \
+  | sudo tee /etc/apt/sources.list.d/netbird.list
+
+sudo apt-get update
+sudo apt-get install -y network-manager-netbird
+sudo systemctl enable --now NetworkManager
+```
+
+### Fedora/RHEL (DNF/YUM)
+
+```bash
+sudo dnf install -y NetworkManager curl ca-certificates
+
+sudo tee /etc/yum.repos.d/netbird.repo >/dev/null <<'EOF'
+[NetBird]
+name=NetBird
+baseurl=https://pkgs.netbird.io/yum/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.netbird.io/yum/repodata/repomd.xml.key
+repo_gpgcheck=1
+EOF
+
+sudo dnf install -y network-manager-netbird
+sudo systemctl enable --now NetworkManager
+```
+
+Replace `dnf` with `yum` on systems that do not provide `dnf`.
+
+### One-line quickstart and snapshots
+
+For Ubuntu/Debian/Fedora/RHEL on `amd64`/`x86_64`, the quickstart script installs NetworkManager prerequisites, enables NetworkManager, downloads a package from the GitHub release assets, and installs it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/netbirdio/network-manager-vpn-plugin/main/scripts/quickstart.sh | sh
@@ -39,37 +81,10 @@ less quickstart.sh
 sh quickstart.sh
 ```
 
-For snapshot releases:
+Snapshot releases are not published to the package repositories. To install the latest snapshot package from GitHub release assets:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/netbirdio/network-manager-vpn-plugin/main/scripts/quickstart.sh | env RELEASE_TAG=snapshot sh
-```
-
-### Ubuntu/Debian
-
-```bash
-sudo apt update
-sudo apt install network-manager curl
-sudo systemctl enable --now NetworkManager
-
-curl -fL -o network-manager-netbird_linux_amd64.deb "$(curl -fsSL https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest | grep '"browser_download_url":' | grep -E 'network-manager-netbird.*(_linux_amd64|_amd64|\.x86_64)\.deb"' | cut -d '"' -f 4 | head -n 1)"
-sudo apt install ./network-manager-netbird_linux_amd64.deb
-```
-
-### Fedora/RHEL
-
-```bash
-sudo dnf install NetworkManager curl
-sudo systemctl enable --now NetworkManager
-
-RELEASE_API=https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/latest
-asset_url="$(curl -fsSL "$RELEASE_API" |
-  grep '"browser_download_url":' |
-  grep -E 'network-manager-netbird.*(_linux_amd64|_amd64|\.x86_64)\.rpm"' |
-  cut -d '"' -f 4 |
-  head -n 1)"
-curl -fL -o network-manager-netbird_linux_amd64.rpm "$asset_url"
-sudo dnf install ./network-manager-netbird_linux_amd64.rpm
 ```
 
 ### Other distributions (tarball)
@@ -83,7 +98,7 @@ sudo ./install.sh
 
 Substitute `amd64` with `arm64` or `armv7` as needed.
 
-For snapshot releases, use `RELEASE_TAG=snapshot` with the quickstart script, set `RELEASE_API=https://api.github.com/repos/netbirdio/network-manager-vpn-plugin/releases/tags/snapshot` in the package examples, or replace `latest/download` with `download/snapshot` in the tarball URL.
+For snapshot releases, use `RELEASE_TAG=snapshot` with the quickstart script, or replace `latest/download` with `download/snapshot` in the tarball URL.
 
 ### Verify
 
@@ -173,13 +188,13 @@ See the [Architecture](docs/architecture.md#activation-lifecycle) doc for the ac
 ## Upgrade and uninstall
 
 ```bash
-# Upgrade a package install: download the newer .deb/.rpm and install it the same way.
-sudo apt install ./network-manager-netbird_linux_amd64.deb   # Debian
-sudo dnf install ./network-manager-netbird_linux_amd64.rpm   # Fedora
+# Upgrade a package-repository install
+sudo apt-get update && sudo apt-get install -y --only-upgrade network-manager-netbird   # Ubuntu/Debian
+sudo dnf upgrade -y network-manager-netbird                                      # Fedora/RHEL
 
 # Uninstall
-sudo apt remove network-manager-netbird   # Ubuntu/Debian
-sudo dnf remove network-manager-netbird   # Fedora/RHEL
+sudo apt-get remove network-manager-netbird   # Ubuntu/Debian
+sudo dnf remove network-manager-netbird       # Fedora/RHEL
 ```
 
 For tarball installs, run the bundled `uninstall.sh`.

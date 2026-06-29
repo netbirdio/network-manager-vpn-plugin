@@ -272,3 +272,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_DEBIAN_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
+          UPLOAD_YUM_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
