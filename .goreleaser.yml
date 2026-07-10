@@ -236,8 +236,11 @@ nfpms:
 
 # Publish the freshly built packages to the NetBird apt/yum repositories. These
 # run in the publish phase, so they are skipped automatically for snapshot builds
-# (which pass --skip=publish) and only fire on tagged releases. Authentication
-# uses the UPLOAD_DEBIAN_SECRET / UPLOAD_YUM_SECRET env vars (set in CI).
+# (which pass --skip=publish) and only fire on tagged releases. The legacy
+# wiretrustee.com hostname is the authenticated upload endpoint; users access the
+# same repositories through the canonical pkgs.netbird.io hostname documented in
+# the README. Authentication uses the UPLOAD_DEBIAN_SECRET / UPLOAD_YUM_SECRET
+# env vars (set in CI).
 uploads:
   - name: debian
     ids:
@@ -245,7 +248,7 @@ uploads:
     exts:
       - deb
     mode: archive
-    target: https://pkgs.wiretrustee.com/debian/pool/{{ .ArtifactName }};deb.distribution=stable;deb.component=main;deb.architecture={{ if .Arm }}armhf{{ else }}{{ .Arch }}{{ end }};deb.package=
+    target: https://pkgs.wiretrustee.com/debian/pool/{{ .ArtifactName }};deb.distribution=stable;deb.component=main;deb.architecture=amd64;deb.package=
     custom_artifact_name: true
     username: dev@wiretrustee.com
     method: PUT
@@ -255,7 +258,7 @@ uploads:
     exts:
       - rpm
     mode: archive
-    target: https://pkgs.wiretrustee.com/yum/{{ .Arch }}{{ if .Arm }}{{ .Arm }}{{ end }}
+    target: https://pkgs.wiretrustee.com/yum/amd64
     username: dev@wiretrustee.com
     method: PUT
 
