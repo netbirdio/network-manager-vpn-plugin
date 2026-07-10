@@ -183,7 +183,7 @@ The plugin communicates with the local NetBird daemon over gRPC at the configure
 
 ## Installed files
 
-Package installs (`.deb`, `.rpm`) place files at the following paths. Tarball installs use the same layout for binaries, NetworkManager metadata, editor modules, and unmanaged-interface config by default, with overrides available through `DESTDIR`, `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR`.
+Package installs (`network-manager-netbird` from the NetBird APT/YUM repositories, or a local `.deb`/`.rpm`) place files at the following paths. Tarball installs use the same layout for binaries, NetworkManager metadata, editor modules, and unmanaged-interface config by default, with overrides available through `DESTDIR`, `LIBEXEC_DIR`, `NM_PLUGIN_DIR`, `NM_VPN_DIR`, `DBUS_POLICY_DIR`, and `NM_CONF_DIR`.
 
 | Path | Purpose |
 | --- | --- |
