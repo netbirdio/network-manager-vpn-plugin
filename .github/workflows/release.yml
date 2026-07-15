@@ -264,6 +264,15 @@ jobs:
       - name: Build and validate Fedora SELinux policy module
         run: scripts/build-fedora-selinux-policy.sh
 
+      - name: Require package upload secret
+        env:
+          PKG_UPLOAD_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
+        run: |
+          if [ -z "$PKG_UPLOAD_SECRET" ]; then
+            echo "::error::PKG_UPLOAD_SECRET is not configured"
+            exit 1
+          fi
+
       - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6
         with:
