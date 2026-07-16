@@ -24,7 +24,7 @@ When building the desktop properties editor from source:
 
 ## Quick install
 
-Tagged releases are published to the NetBird package repository as `network-manager-netbird` for `amd64`/`x86_64`. First [configure the repository](https://docs.netbird.io/get-started/install/linux), then install the plugin with your distribution's package manager. Its dependencies include NetworkManager and the NetBird daemon/runtime (`netbird`). You still need to authenticate/connect NetBird after installation.
+Tagged releases are published to the NetBird package repository as `network-manager-netbird` for `amd64`/`x86_64` and `arm64`/`aarch64`. First [configure the repository](https://docs.netbird.io/get-started/install/linux), then install the plugin with your distribution's package manager. Its dependencies include NetworkManager and the NetBird daemon/runtime (`netbird`). You still need to authenticate/connect NetBird after installation.
 
 ### Ubuntu/Debian (APT)
 

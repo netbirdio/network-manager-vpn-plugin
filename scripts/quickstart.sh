@@ -82,8 +82,13 @@ case "$(uname -s)" in
 esac
 
 case "$(uname -m)" in
-  x86_64|amd64) ;;
-  *) die "quickstart packages are currently published for amd64/x86_64 only; use the tarball install from the README for this architecture" ;;
+  x86_64|amd64)
+    package_arch=amd64
+    ;;
+  aarch64|arm64)
+    package_arch=arm64
+    ;;
+  *) die "quickstart packages are currently published for amd64/x86_64 and arm64/aarch64 only; use the tarball install from the README for this architecture" ;;
 esac
 
 if command -v apt-get >/dev/null 2>&1; then
@@ -121,12 +126,12 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-log "Resolving $RELEASE_TAG network-manager-netbird .$package_ext package..."
+log "Resolving $RELEASE_TAG network-manager-netbird $package_arch .$package_ext package..."
 release_json="$tmpdir/release.json"
 curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 -o "$release_json" "$release_api"
 
 asset_url=$(grep '"browser_download_url":' "$release_json" |
-  grep -E "network-manager-netbird.*(_linux_amd64|_amd64|\\.x86_64)\\.$package_ext\"" |
+  grep -E "network-manager-netbird.*_linux_$package_arch\\.$package_ext\"" |
   cut -d '"' -f 4 |
   head -n 1)
 checksum_url=$(grep '"browser_download_url":' "$release_json" |
@@ -135,7 +140,7 @@ checksum_url=$(grep '"browser_download_url":' "$release_json" |
   head -n 1)
 
 if [ -z "$asset_url" ]; then
-  die "could not find an amd64 .$package_ext asset in $release_api"
+  die "could not find a $package_arch .$package_ext asset in $release_api"
 fi
 if [ -z "$checksum_url" ]; then
   die "could not find checksums.txt in $release_api"

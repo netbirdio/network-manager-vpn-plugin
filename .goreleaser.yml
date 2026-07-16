@@ -72,6 +72,32 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+  - id: nm-netbird-service-package-arm64
+    main: ./cmd/nm-netbird-service
+    binary: nm-netbird-service
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+  - id: nm-netbird-auth-dialog-package-arm64
+    main: ./cmd/nm-netbird-auth-dialog
+    binary: nm-netbird-auth-dialog
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
 
 archives:
   - id: nm-netbird-service
@@ -141,13 +167,12 @@ srpm:
     - docs/reference.md
     - docs/architecture.md
 
-# Two single-format nfpm definitions (instead of one combined deb+rpm entry) so
-# that each artifact carries a distinct id the `uploads` pipe can target. The
-# packages are amd64-only because the bundled GTK/NM editor .so files are built
-# by the C toolchain on the amd64 runner; both entries reference the dedicated
-# amd64-only Go builds for the same reason.
+# Keep package formats and architectures on distinct artifact ids so the
+# archive-mode upload pipe can route them to the correct repository paths.
+# Each package uses GTK/NM editor modules built natively for its architecture.
 nfpms:
-  - id: linux-packages-deb
+  - &linux-packages-deb
+    id: linux-packages-deb
     ids:
       - nm-netbird-service-package-amd64
       - nm-netbird-auth-dialog-package-amd64
@@ -172,11 +197,11 @@ nfpms:
       - libgtk-4-1
       - libnma-gtk4-0
     contents:
-      - src: bin/linux_amd64/libnm-vpn-plugin-netbird.so
+      - src: bin/linux_{{ .Arch }}/libnm-vpn-plugin-netbird.so
         dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
-      - src: bin/linux_amd64/libnm-vpn-plugin-netbird-editor.so
+      - src: bin/linux_{{ .Arch }}/libnm-vpn-plugin-netbird-editor.so
         dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so
-      - src: bin/linux_amd64/libnm-gtk4-vpn-plugin-netbird-editor.so
+      - src: bin/linux_{{ .Arch }}/libnm-gtk4-vpn-plugin-netbird-editor.so
         dst: /usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so
       - src: packaging/NetworkManager/VPN/nm-netbird-service.name
         dst: /etc/NetworkManager/VPN/nm-netbird-service.name
@@ -190,7 +215,13 @@ nfpms:
     scripts:
       postinstall: packaging/scripts/postinstall.sh
       postremove: packaging/scripts/postremove.sh
-  - id: linux-packages-rpm
+  - <<: *linux-packages-deb
+    id: linux-packages-deb-arm64
+    ids:
+      - nm-netbird-service-package-arm64
+      - nm-netbird-auth-dialog-package-arm64
+  - &linux-packages-rpm
+    id: linux-packages-rpm
     ids:
       - nm-netbird-service-package-amd64
       - nm-netbird-auth-dialog-package-amd64
@@ -213,11 +244,11 @@ nfpms:
       - gtk4
       - libnma-gtk4
     contents:
-      - src: bin/linux_amd64/libnm-vpn-plugin-netbird.so
+      - src: bin/linux_{{ .Arch }}/libnm-vpn-plugin-netbird.so
         dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird.so
-      - src: bin/linux_amd64/libnm-vpn-plugin-netbird-editor.so
+      - src: bin/linux_{{ .Arch }}/libnm-vpn-plugin-netbird-editor.so
         dst: /usr/lib/NetworkManager/libnm-vpn-plugin-netbird-editor.so
-      - src: bin/linux_amd64/libnm-gtk4-vpn-plugin-netbird-editor.so
+      - src: bin/linux_{{ .Arch }}/libnm-gtk4-vpn-plugin-netbird-editor.so
         dst: /usr/lib/NetworkManager/libnm-gtk4-vpn-plugin-netbird-editor.so
       - src: packaging/NetworkManager/VPN/nm-netbird-service.name
         dst: /etc/NetworkManager/VPN/nm-netbird-service.name
@@ -233,14 +264,19 @@ nfpms:
     scripts:
       postinstall: packaging/scripts/postinstall.sh
       postremove: packaging/scripts/postremove.sh
+  - <<: *linux-packages-rpm
+    id: linux-packages-rpm-arm64
+    ids:
+      - nm-netbird-service-package-arm64
+      - nm-netbird-auth-dialog-package-arm64
 
 # Publish the freshly built packages to the NetBird apt/yum repositories. These
 # run in the publish phase, so they are skipped automatically for snapshot builds
 # (which pass --skip=publish) and only fire on tagged releases. The legacy
 # wiretrustee.com hostname is the authenticated upload endpoint; users access the
 # same repositories through the canonical pkgs.netbird.io hostname documented in
-# the README. Authentication uses the UPLOAD_DEBIAN_SECRET / UPLOAD_YUM_SECRET
-# env vars (set in CI).
+# the README. Authentication uses the matching UPLOAD_*_SECRET env vars set in
+# CI.
 uploads:
   - name: debian
     ids:
@@ -252,6 +288,16 @@ uploads:
     custom_artifact_name: true
     username: dev@wiretrustee.com
     method: PUT
+  - name: debian_arm64
+    ids:
+      - linux-packages-deb-arm64
+    exts:
+      - deb
+    mode: archive
+    target: https://pkgs.wiretrustee.com/debian/pool/{{ .ArtifactName }};deb.distribution=stable;deb.component=main;deb.architecture=arm64;deb.package=
+    custom_artifact_name: true
+    username: dev@wiretrustee.com
+    method: PUT
   - name: yum
     ids:
       - linux-packages-rpm
@@ -259,6 +305,15 @@ uploads:
       - rpm
     mode: archive
     target: https://pkgs.wiretrustee.com/yum/amd64
+    username: dev@wiretrustee.com
+    method: PUT
+  - name: yum_arm64
+    ids:
+      - linux-packages-rpm-arm64
+    exts:
+      - rpm
+    mode: archive
+    target: https://pkgs.wiretrustee.com/yum/arm64
     username: dev@wiretrustee.com
     method: PUT
 
