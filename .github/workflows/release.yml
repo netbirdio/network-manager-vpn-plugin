@@ -217,7 +217,6 @@ jobs:
         env:
           GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
           NFPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
-          SRPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
 
       - name: Verify RPM signatures
         if: env.GPG_RPM_KEY_FILE != ''
@@ -230,6 +229,7 @@ jobs:
             status=0
             for rpm_file in /dist/*.rpm; do
               [ -f "$rpm_file" ] || continue
+              case "$rpm_file" in *.src.rpm) continue ;; esac
               echo "--- $(basename "$rpm_file") ---"
               output=$(rpm -K "$rpm_file")
               echo "$output"
@@ -392,7 +392,6 @@ jobs:
           UPLOAD_YUM_ARM64_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
           GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
           NFPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
-          SRPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
 
       - name: Verify RPM signatures
         run: |
@@ -404,6 +403,7 @@ jobs:
             status=0
             for rpm_file in /dist/*.rpm; do
               [ -f "$rpm_file" ] || continue
+              case "$rpm_file" in *.src.rpm) continue ;; esac
               echo "--- $(basename "$rpm_file") ---"
               output=$(rpm -K "$rpm_file")
               echo "$output"
