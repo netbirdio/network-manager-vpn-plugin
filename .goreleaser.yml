@@ -155,6 +155,8 @@ srpm:
   nfpmrpm:
     summary: NetworkManager VPN plugin for NetBird
     group: Applications/Internet
+    signature:
+      key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
   license: BSD-3-Clause
   license_file_name: LICENSE
   url: https://github.com/netbirdio/network-manager-vpn-plugin
@@ -264,6 +266,9 @@ nfpms:
     scripts:
       postinstall: packaging/scripts/postinstall.sh
       postremove: packaging/scripts/postremove.sh
+    rpm:
+      signature:
+        key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
   - <<: *linux-packages-rpm
     id: linux-packages-rpm-arm64
     ids:
