@@ -220,29 +220,7 @@ jobs:
 
       - name: Verify RPM signatures
         if: env.GPG_RPM_KEY_FILE != ''
-        run: |
-          docker run --rm -v "$(pwd)/dist:/dist" fedora:41 bash -c '
-            dnf install -y -q rpm-sign curl >/dev/null 2>&1
-            curl -sSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key -o /tmp/rpm-pub.key
-            rpm --import /tmp/rpm-pub.key
-            echo "=== Verifying RPM signatures ==="
-            status=0
-            for rpm_file in /dist/*.rpm; do
-              [ -f "$rpm_file" ] || continue
-              case "$rpm_file" in *.src.rpm) continue ;; esac
-              echo "--- $(basename "$rpm_file") ---"
-              output=$(rpm -K "$rpm_file")
-              echo "$output"
-              case "$output" in
-                *"signatures OK"*) ;;
-                *)
-                  echo "ERROR: missing or invalid GPG signature"
-                  status=1
-                  ;;
-              esac
-            done
-            exit $status
-          '
+        run: scripts/verify-rpm-signatures.sh
 
       - name: Clean up GPG key
         if: always()
@@ -394,29 +372,7 @@ jobs:
           NFPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
 
       - name: Verify RPM signatures
-        run: |
-          docker run --rm -v "$(pwd)/dist:/dist" fedora:41 bash -c '
-            dnf install -y -q rpm-sign curl >/dev/null 2>&1
-            curl -sSL https://pkgs.netbird.io/yum/repodata/repomd.xml.key -o /tmp/rpm-pub.key
-            rpm --import /tmp/rpm-pub.key
-            echo "=== Verifying RPM signatures ==="
-            status=0
-            for rpm_file in /dist/*.rpm; do
-              [ -f "$rpm_file" ] || continue
-              case "$rpm_file" in *.src.rpm) continue ;; esac
-              echo "--- $(basename "$rpm_file") ---"
-              output=$(rpm -K "$rpm_file")
-              echo "$output"
-              case "$output" in
-                *"signatures OK"*) ;;
-                *)
-                  echo "ERROR: missing or invalid GPG signature"
-                  status=1
-                  ;;
-              esac
-            done
-            exit $status
-          '
+        run: scripts/verify-rpm-signatures.sh
 
       - name: Clean up GPG key
         if: always()
