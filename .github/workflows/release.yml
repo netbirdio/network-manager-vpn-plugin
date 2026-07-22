@@ -192,12 +192,39 @@ jobs:
       - name: Build and validate Fedora SELinux policy module
         run: scripts/build-fedora-selinux-policy.sh
 
+      # Sign RPMs whenever the signing key is available (pushes to main and
+      # same-repo PRs). Fork PRs have no secrets, so the key file env var stays
+      # unset and the conditional key_file template in .goreleaser.yml skips
+      # signing instead of failing the build.
+      - name: Decode GPG signing key
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GPG_RPM_PRIVATE_KEY: ${{ secrets.GPG_RPM_PRIVATE_KEY }}
+        run: |
+          if [ -z "$GPG_RPM_PRIVATE_KEY" ]; then
+            echo "GPG_RPM_PRIVATE_KEY is not available; RPM packages will not be signed"
+            exit 0
+          fi
+          echo "$GPG_RPM_PRIVATE_KEY" | base64 -d > /tmp/gpg-rpm-signing-key.asc
+          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> $GITHUB_ENV
+
       - name: Build snapshot artifacts
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: ${{ env.GORELEASER_VER }}
           args: release --snapshot --clean --skip=publish
+        env:
+          GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
+          NFPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
+
+      - name: Verify RPM signatures
+        if: env.GPG_RPM_KEY_FILE != ''
+        run: scripts/verify-rpm-signatures.sh
+
+      - name: Clean up GPG key
+        if: always()
+        run: rm -f /tmp/gpg-rpm-signing-key.asc
 
       - name: Upload nm-netbird-service Linux snapshot
         uses: actions/upload-artifact@v4
@@ -305,14 +332,29 @@ jobs:
       - name: Build and validate Fedora SELinux policy module
         run: scripts/build-fedora-selinux-policy.sh
 
-      - name: Require package upload secret
+      # Fail fast if any release secret is missing: the RPM signature template
+      # in .goreleaser.yml silently skips signing when the key is absent, and a
+      # tagged release must never upload unsigned RPMs to the yum repository
+      # (users install with gpgcheck=1).
+      - name: Require package upload and signing secrets
         env:
           PKG_UPLOAD_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
+          GPG_RPM_PRIVATE_KEY: ${{ secrets.GPG_RPM_PRIVATE_KEY }}
+          GPG_RPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
         run: |
-          if [ -z "$PKG_UPLOAD_SECRET" ]; then
-            echo "::error::PKG_UPLOAD_SECRET is not configured"
-            exit 1
-          fi
+          for secret in PKG_UPLOAD_SECRET GPG_RPM_PRIVATE_KEY GPG_RPM_PASSPHRASE; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::$secret is not configured"
+              exit 1
+            fi
+          done
+
+      - name: Decode GPG signing key
+        env:
+          GPG_RPM_PRIVATE_KEY: ${{ secrets.GPG_RPM_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_RPM_PRIVATE_KEY" | base64 -d > /tmp/gpg-rpm-signing-key.asc
+          echo "GPG_RPM_KEY_FILE=/tmp/gpg-rpm-signing-key.asc" >> $GITHUB_ENV
 
       - name: Publish release artifacts
         uses: goreleaser/goreleaser-action@v6
@@ -326,3 +368,12 @@ jobs:
           UPLOAD_DEBIAN_ARM64_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
           UPLOAD_YUM_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
           UPLOAD_YUM_ARM64_SECRET: ${{ secrets.PKG_UPLOAD_SECRET }}
+          GPG_RPM_KEY_FILE: ${{ env.GPG_RPM_KEY_FILE }}
+          NFPM_PASSPHRASE: ${{ secrets.GPG_RPM_PASSPHRASE }}
+
+      - name: Verify RPM signatures
+        run: scripts/verify-rpm-signatures.sh
+
+      - name: Clean up GPG key
+        if: always()
+        run: rm -f /tmp/gpg-rpm-signing-key.asc

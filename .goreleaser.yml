@@ -264,6 +264,9 @@ nfpms:
     scripts:
       postinstall: packaging/scripts/postinstall.sh
       postremove: packaging/scripts/postremove.sh
+    rpm:
+      signature:
+        key_file: '{{ if index .Env "GPG_RPM_KEY_FILE" }}{{ .Env.GPG_RPM_KEY_FILE }}{{ end }}'
   - <<: *linux-packages-rpm
     id: linux-packages-rpm-arm64
     ids:
